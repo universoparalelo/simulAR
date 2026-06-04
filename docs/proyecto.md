@@ -54,6 +54,12 @@ El sistema no elimina archivos automáticamente, sino que proporciona informaci�
 
 A los efectos de esta práctica supervisada, se desarrollarán los módulos 1 y 2, enfocados en la gestión de simulaciones y en los procesos de análisis y estandarización de las mismas.
 
+### 4. Pantalla principal
+
+![Pantalla principal](pantallaPrincipal.jpeg)
+
+
+
 ## OBJETIVOS DEL PROYECTO
 
 - Estandarizar el análisis de simulaciones mediante la implementación de un pipeline automatizado que calcule métricas clave (como RMSD y radio de giro).

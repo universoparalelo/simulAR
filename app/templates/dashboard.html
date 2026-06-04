@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>QuITEx Simulation Manager - Dashboard</title>
+
+        <!-- CSS del dashboard -->
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='dashboard.css') }}"
+        />
+
+        <!-- Iconos de Tabler -->
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css"
+        />
+    </head>
+    <body>
+        <div class="dashboard-container">
+            <!-- ============================================
+             HEADER
+             ============================================ -->
+            <div class="header">
+                <div class="header-left">
+                    <div class="header-logo">
+                        <i class="ti ti-atom-2"></i>
+                    </div>
+                    <h1 class="header-title">QuITEx Simulation Manager</h1>
+                </div>
+                <button class="header-button" onclick="handleLoadSimulation()">
+                    <i class="ti ti-folder-plus"></i>
+                    Cargar simulación
+                </button>
+            </div>
+
+            <!-- ============================================
+             MÉTRICAS
+             ============================================ -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Total simulaciones</div>
+                    <div class="metric-value">127</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Analizadas</div>
+                    <div class="metric-value">89</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Almacenamiento</div>
+                    <div class="metric-value">2.4 TB</div>
+                </div>
+                <div class="metric-card success">
+                    <div class="metric-label">Espacio liberable</div>
+                    <div class="metric-value">438 GB</div>
+                </div>
+            </div>
+
+            <!-- ============================================
+             FILTROS Y BÚSQUEDA
+             ============================================ -->
+            <div class="filters-container">
+                <input
+                    type="text"
+                    class="search-input"
+                    placeholder="Buscar simulación..."
+                    id="searchInput"
+                    onkeyup="handleSearch(this.value)"
+                />
+                <select
+                    class="filter-select"
+                    id="subjectFilter"
+                    onchange="handleFilterChange()"
+                >
+                    <option value="">Todas las materias</option>
+                    <option value="proteinas">Proteínas</option>
+                    <option value="membranas">Membranas</option>
+                    <option value="polimeros">Polímeros</option>
+                    <option value="nanoparticulas">Nanopartículas</option>
+                </select>
+                <select
+                    class="filter-select"
+                    id="programFilter"
+                    onchange="handleFilterChange()"
+                >
+                    <option value="">Todos los programas</option>
+                    <option value="gromacs">GROMACS</option>
+                    <option value="amber">AMBER</option>
+                    <option value="namd">NAMD</option>
+                    <option value="lammps">LAMMPS</option>
+                </select>
+            </div>
+
+            <!-- ============================================
+             SECCIÓN DE SIMULACIONES
+             ============================================ -->
+            <div class="simulations-section">
+                <h2 class="section-title">Simulaciones recientes</h2>
+
+                <div class="simulations-list" id="simulationsList">
+                    <!-- Simulación 1 -->
+                    <div
+                        class="simulation-row"
+                        onclick="handleViewSimulation('protein_folding_md_001')"
+                    >
+                        <div class="simulation-row-header">
+                            <div class="simulation-row-left">
+                                <div class="simulation-name-container">
+                                    <h3 class="simulation-name">
+                                        protein_folding_md_001
+                                    </h3>
+                                    <span class="status-badge success">
+                                        <i class="ti ti-check"></i> Analizado
+                                    </span>
+                                </div>
+                                <div class="tags-container">
+                                    <span class="tag subject">
+                                        <i class="ti ti-test-pipe"></i>
+                                        Proteínas
+                                    </span>
+                                    <span class="tag program">
+                                        <i class="ti ti-box"></i>
+                                        GROMACS
+                                    </span>
+                                    <span class="tag duration">
+                                        <i class="ti ti-clock"></i>
+                                        100 ns
+                                    </span>
+                                    <span class="tag storage">
+                                        <i class="ti ti-database"></i>
+                                        42.3 GB
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="simulation-row-right">
+                                <div class="modification-label">
+                                    Última modificación
+                                </div>
+                                <div class="modification-time">Hace 2 días</div>
+                            </div>
+                        </div>
+                        <div class="simulation-description">
+                            Simulación de dinámica molecular para estudio de
+                            plegamiento de proteína en solución acuosa
+                        </div>
+                    </div>
+
+                    <!-- Simulación 2 -->
+                    <div
+                        class="simulation-row"
+                        onclick="handleViewSimulation('membrane_transport_eq')"
+                    >
+                        <div class="simulation-row-header">
+                            <div class="simulation-row-left">
+                                <div class="simulation-name-container">
+                                    <h3 class="simulation-name">
+                                        membrane_transport_eq
+                                    </h3>
+                                    <span class="status-badge success">
+                                        <i class="ti ti-check"></i> Analizado
+                                    </span>
+                                </div>
+                                <div class="tags-container">
+                                    <span class="tag subject">
+                                        <i class="ti ti-test-pipe"></i>
+                                        Membranas
+                                    </span>
+                                    <span class="tag program">
+                                        <i class="ti ti-box"></i>
+                                        AMBER
+                                    </span>
+                                    <span class="tag duration">
+                                        <i class="ti ti-clock"></i>
+                                        250 ns
+                                    </span>
+                                    <span class="tag storage">
+                                        <i class="ti ti-database"></i>
+                                        128.7 GB
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="simulation-row-right">
+                                <div class="modification-label">
+                                    Última modificación
+                                </div>
+                                <div class="modification-time">
+                                    Hace 1 semana
+                                </div>
+                            </div>
+                        </div>
+                        <div class="simulation-description">
+                            Equilibración de sistema membrana lipídica con canal
+                            de transporte iónico
+                        </div>
+                    </div>
+
+                    <!-- Simulación 3 -->
+                    <div
+                        class="simulation-row"
+                        onclick="handleViewSimulation('polymer_chain_replica')"
+                    >
+                        <div class="simulation-row-header">
+                            <div class="simulation-row-left">
+                                <div class="simulation-name-container">
+                                    <h3 class="simulation-name">
+                                        polymer_chain_replica
+                                    </h3>
+                                    <span class="status-badge warning">
+                                        <i class="ti ti-refresh"></i> Analizando
+                                    </span>
+                                </div>
+                                <div class="tags-container">
+                                    <span class="tag subject">
+                                        <i class="ti ti-test-pipe"></i>
+                                        Polímeros
+                                    </span>
+                                    <span class="tag program">
+                                        <i class="ti ti-box"></i>
+                                        LAMMPS
+                                    </span>
+                                    <span class="tag duration">
+                                        <i class="ti ti-clock"></i>
+                                        500 ns
+                                    </span>
+                                    <span class="tag storage">
+                                        <i class="ti ti-database"></i>
+                                        87.2 GB
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="simulation-row-right">
+                                <div class="modification-label">
+                                    Última modificación
+                                </div>
+                                <div class="modification-time">
+                                    Hace 3 horas
+                                </div>
+                            </div>
+                        </div>
+                        <div class="simulation-description">
+                            Simulación réplica de cadena polimérica con
+                            diferentes condiciones termodinámicas
+                        </div>
+                    </div>
+
+                    <!-- Simulación 4 -->
+                    <div
+                        class="simulation-row"
+                        onclick="
+                            handleViewSimulation('nano_particle_interface')
+                        "
+                    >
+                        <div class="simulation-row-header">
+                            <div class="simulation-row-left">
+                                <div class="simulation-name-container">
+                                    <h3 class="simulation-name">
+                                        nano_particle_interface
+                                    </h3>
+                                    <span class="status-badge pending">
+                                        <i class="ti ti-hourglass"></i>
+                                        Pendiente
+                                    </span>
+                                </div>
+                                <div class="tags-container">
+                                    <span class="tag subject">
+                                        <i class="ti ti-test-pipe"></i>
+                                        Nanopartículas
+                                    </span>
+                                    <span class="tag program">
+                                        <i class="ti ti-box"></i>
+                                        NAMD
+                                    </span>
+                                    <span class="tag duration">
+                                        <i class="ti ti-clock"></i>
+                                        75 ns
+                                    </span>
+                                    <span class="tag storage">
+                                        <i class="ti ti-database"></i>
+                                        31.8 GB
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="simulation-row-right">
+                                <div class="modification-label">
+                                    Última modificación
+                                </div>
+                                <div class="modification-time">
+                                    Hace 2 semanas
+                                </div>
+                            </div>
+                        </div>
+                        <div class="simulation-description">
+                            Estudio de interacciones en interfaz
+                            nanopartícula-proteína en medio biológico
+                        </div>
+                    </div>
+
+                    <!-- Simulación 5 -->
+                    <div
+                        class="simulation-row"
+                        onclick="handleViewSimulation('dna_histone_binding')"
+                    >
+                        <div class="simulation-row-header">
+                            <div class="simulation-row-left">
+                                <div class="simulation-name-container">
+                                    <h3 class="simulation-name">
+                                        dna_histone_binding
+                                    </h3>
+                                    <span class="status-badge success">
+                                        <i class="ti ti-check"></i> Analizado
+                                    </span>
+                                </div>
+                                <div class="tags-container">
+                                    <span class="tag subject">
+                                        <i class="ti ti-test-pipe"></i>
+                                        Proteínas
+                                    </span>
+                                    <span class="tag program">
+                                        <i class="ti ti-box"></i>
+                                        GROMACS
+                                    </span>
+                                    <span class="tag duration">
+                                        <i class="ti ti-clock"></i>
+                                        200 ns
+                                    </span>
+                                    <span class="tag storage">
+                                        <i class="ti ti-database"></i>
+                                        95.4 GB
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="simulation-row-right">
+                                <div class="modification-label">
+                                    Última modificación
+                                </div>
+                                <div class="modification-time">
+                                    Hace 3 semanas
+                                </div>
+                            </div>
+                        </div>
+                        <div class="simulation-description">
+                            Análisis de unión ADN-histona y modificaciones
+                            conformacionales del nucleosoma
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================
+             PAGINACIÓN
+             ============================================ -->
+            <div class="pagination-container">
+                <div class="pagination-info">
+                    Mostrando 5 de 127 simulaciones
+                </div>
+                <div class="pagination-buttons">
+                    <button
+                        class="pagination-button"
+                        onclick="previousPage()"
+                        disabled
+                    >
+                        <i class="ti ti-chevron-left"></i>
+                    </button>
+                    <button
+                        class="pagination-button active"
+                        onclick="goToPage(1)"
+                    >
+                        1
+                    </button>
+                    <button class="pagination-button" onclick="goToPage(2)">
+                        2
+                    </button>
+                    <button class="pagination-button" onclick="goToPage(3)">
+                        3
+                    </button>
+                    <button class="pagination-button" onclick="nextPage()">
+                        <i class="ti ti-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================
+         SCRIPTS
+         ============================================ -->
+        <script>
+            // Estado de la aplicación
+            let currentPage = 1;
+            let currentSearch = "";
+            let currentSubjectFilter = "";
+            let currentProgramFilter = "";
+
+            /**
+             * Maneja la carga de una nueva simulación
+             */
+            function handleLoadSimulation() {
+                alert(
+                    "Función: Cargar nueva simulación\n\nEsta acción abrirá un diálogo para seleccionar el directorio que contiene la simulación.",
+                );
+                console.log("Cargando nueva simulación...");
+            }
+
+            /**
+             * Maneja la visualización de detalles de una simulación
+             * @param {string} simulationId - ID de la simulación
+             */
+            function handleViewSimulation(simulationId) {
+                alert(
+                    `Función: Ver detalles\n\nAbriendo detalles de la simulación: ${simulationId}\n\nAquí se ejecutaría automáticamente el análisis si aún no está completo.`,
+                );
+                console.log(`Viendo detalles de: ${simulationId}`);
+            }
+
+            /**
+             * Maneja la búsqueda de simulaciones
+             * @param {string} searchTerm - Término de búsqueda
+             */
+            function handleSearch(searchTerm) {
+                currentSearch = searchTerm.toLowerCase();
+                console.log(`Buscando: ${currentSearch}`);
+                filterSimulations();
+            }
+
+            /**
+             * Maneja cambios en los filtros
+             */
+            function handleFilterChange() {
+                currentSubjectFilter =
+                    document.getElementById("subjectFilter").value;
+                currentProgramFilter =
+                    document.getElementById("programFilter").value;
+                console.log(
+                    `Filtro materia: ${currentSubjectFilter}, Filtro programa: ${currentProgramFilter}`,
+                );
+                filterSimulations();
+            }
+
+            /**
+             * Filtra las simulaciones según los criterios activos
+             */
+            function filterSimulations() {
+                const rows = document.querySelectorAll(".simulation-row");
+
+                rows.forEach((row) => {
+                    let show = true;
+
+                    // Filtro de búsqueda
+                    if (currentSearch) {
+                        const name = row
+                            .querySelector(".simulation-name")
+                            .textContent.toLowerCase();
+                        const description = row
+                            .querySelector(".simulation-description")
+                            .textContent.toLowerCase();
+                        show =
+                            show &&
+                            (name.includes(currentSearch) ||
+                                description.includes(currentSearch));
+                    }
+
+                    // Filtro de materia
+                    if (currentSubjectFilter) {
+                        const tags =
+                            row.querySelector(".tags-container").textContent;
+                        const subjectMap = {
+                            proteinas: "Proteínas",
+                            membranas: "Membranas",
+                            polimeros: "Polímeros",
+                            nanoparticulas: "Nanopartículas",
+                        };
+                        show =
+                            show &&
+                            tags.includes(subjectMap[currentSubjectFilter]);
+                    }
+
+                    // Filtro de programa
+                    if (currentProgramFilter) {
+                        const tags =
+                            row.querySelector(".tags-container").textContent;
+                        const programMap = {
+                            gromacs: "GROMACS",
+                            amber: "AMBER",
+                            namd: "NAMD",
+                            lammps: "LAMMPS",
+                        };
+                        show =
+                            show &&
+                            tags.includes(programMap[currentProgramFilter]);
+                    }
+
+                    row.style.display = show ? "block" : "none";
+                });
+            }
+
+            /**
+             * Navega a la página anterior
+             */
+            function previousPage() {
+                if (currentPage > 1) {
+                    currentPage--;
+                    updatePagination();
+                }
+            }
+
+            /**
+             * Navega a la página siguiente
+             */
+            function nextPage() {
+                currentPage++;
+                updatePagination();
+            }
+
+            /**
+             * Navega a una página específica
+             * @param {number} pageNumber - Número de página
+             */
+            function goToPage(pageNumber) {
+                currentPage = pageNumber;
+                updatePagination();
+            }
+
+            /**
+             * Actualiza el estado de la paginación
+             */
+            function updatePagination() {
+                // Actualizar botones activos
+                document
+                    .querySelectorAll(".pagination-button")
+                    .forEach((btn) => {
+                        btn.classList.remove("active");
+                    });
+
+                const activeBtn = document.querySelector(
+                    `.pagination-button[onclick="goToPage(${currentPage})"]`,
+                );
+                if (activeBtn) {
+                    activeBtn.classList.add("active");
+                }
+
+                console.log(`Navegando a página: ${currentPage}`);
+            }
+
+            /**
+             * Evento al cargar la página
+             */
+            document.addEventListener("DOMContentLoaded", () => {
+                console.log("Dashboard cargado correctamente");
+                updatePagination();
+            });
+
+            /**
+             * Manejo de tecla Enter en búsqueda
+             */
+            document.addEventListener("keypress", (event) => {
+                if (
+                    event.key === "Enter" &&
+                    document.activeElement.id === "searchInput"
+                ) {
+                    filterSimulations();
+                }
+            });
+        </script>
+    </body>
+</html>
