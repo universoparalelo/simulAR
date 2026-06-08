@@ -452,6 +452,170 @@ button:active {
 }
 
 /* ============================================
+   DETALLE DE SIMULACION
+   ============================================ */
+
+.detail-subtitle {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    margin-top: var(--spacing-xs);
+}
+
+.detail-hero {
+    background-color: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-2xl);
+    padding: var(--spacing-xl);
+}
+
+.detail-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.detail-title {
+    color: var(--color-text-primary);
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.detail-description {
+    color: var(--color-text-secondary);
+    max-width: 820px;
+}
+
+.detail-actions {
+    align-items: flex-end;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.detail-grid {
+    display: grid;
+    gap: var(--spacing-md);
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.detail-panel,
+.detail-table-wrapper {
+    background-color: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-sm);
+    padding: var(--spacing-lg);
+}
+
+.detail-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-list-row {
+    align-items: center;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    display: flex;
+    gap: var(--spacing-md);
+    justify-content: space-between;
+    padding: var(--spacing-md) 0;
+}
+
+.detail-list-row:first-child {
+    padding-top: 0;
+}
+
+.detail-list-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.detail-list-row span {
+    color: var(--color-text-secondary);
+}
+
+.detail-list-row strong {
+    color: var(--color-text-primary);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+.timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.timeline-item {
+    align-items: center;
+    color: var(--color-text-secondary);
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.timeline-item i {
+    background-color: var(--color-background-info);
+    border-radius: 50%;
+    color: var(--color-text-info);
+    display: flex;
+    flex: 0 0 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+}
+
+.timeline-item.done i {
+    background-color: var(--color-background-success);
+    color: var(--color-text-success);
+}
+
+.timeline-item.warning i {
+    background-color: var(--color-background-warning);
+    color: var(--color-text-warning);
+}
+
+.detail-table-wrapper {
+    overflow-x: auto;
+}
+
+.detail-table {
+    border-collapse: collapse;
+    min-width: 680px;
+    width: 100%;
+}
+
+.detail-table th,
+.detail-table td {
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    padding: var(--spacing-md);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.detail-table th {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.detail-table td {
+    color: var(--color-text-primary);
+}
+
+.detail-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ============================================
    RESPONSIVE DESIGN
    ============================================ */
 
@@ -462,6 +626,10 @@ button:active {
 
     .simulation-row {
         padding: var(--spacing-md);
+    }
+
+    .detail-grid {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -520,6 +688,24 @@ button:active {
     .pagination-buttons {
         width: 100%;
         justify-content: center;
+    }
+
+    .detail-hero {
+        flex-direction: column;
+    }
+
+    .detail-actions {
+        align-items: stretch;
+    }
+
+    .detail-list-row {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+    }
+
+    .detail-list-row strong {
+        text-align: left;
     }
 }
 
