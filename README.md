@@ -11,11 +11,49 @@ La arquitectura actual usa FastAPI como backend, Jinja2 para templates HTML y ar
 
 ## Instalacion
 
-```powershell
+Puedes crear un entorno virtual usando `venv` o usar `conda`/`mamba`. Abajo hay ejemplos para ambos casos.
+
+- Usando `venv` (Linux / macOS):
+
+```bash
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+- Usando `venv` (Windows PowerShell):
+
+```powershell
+python -m venv .venv
+# PowerShell
+. .venv/Scripts/Activate.ps1
+# Si estás usando cmd.exe:
+# .venv\Scripts\activate.bat
+pip install -r requirements.txt
+```
+
+- Usando `conda` (Anaconda / Miniconda). Este flujo crea un entorno con la versión requerida de Python y utiliza `pip` para instalar las dependencias definidas en `requirements.txt`:
+
+```bash
+# Crear el entorno (ej. Python 3.10)
+conda create -n simulAR python=3.10 -y
+conda activate simulAR
+# Instalar dependencias desde pip (recomendado para este proyecto)
+pip install -r requirements.txt
+```
+
+Opcional: instalar algunas dependencias vía conda (ej.: SQLAlchemy o paquetes científicos) desde conda-forge:
+
+```bash
+conda install -n simulAR -c conda-forge sqlalchemy
+# o usando mamba (si lo tenés instalado):
+# mamba install -n simulAR -c conda-forge sqlalchemy
+```
+
+Notas:
+- Si trabajás con archivos y librerías científicas pesadas (BLAS, LAPACK, etc.), `conda`/`conda-forge` suele resolver binarios de forma más cómoda.
+- En entornos compartidos (servidor del laboratorio) podés preferir `conda` para gestionar dependencias del sistema.
+
 
 ## Ejecutar
 

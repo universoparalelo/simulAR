@@ -29,11 +29,25 @@
                     </div>
                     <h1 class="header-title">QuITEx Simulation Manager</h1>
                 </div>
-                <button class="header-button" onclick="handleLoadSimulation()">
+                <button
+                    id="btnLoadSim"
+                    class="header-button"
+                    onclick="handleLoadSimulation()"
+                >
                     <i class="ti ti-folder-plus"></i>
                     Cargar simulación
                 </button>
             </div>
+
+            <!-- Input oculto para selección de carpeta (webkitdirectory) -->
+            <input
+                id="dirInput"
+                type="file"
+                webkitdirectory
+                directory
+                multiple
+                style="display: none"
+            />
 
             <!-- ============================================
              MÉTRICAS
@@ -395,11 +409,82 @@
              * Maneja la carga de una nueva simulación
              */
             function handleLoadSimulation() {
-                alert(
-                    "Función: Cargar nueva simulación\n\nEsta acción abrirá un diálogo para seleccionar el directorio que contiene la simulación.",
-                );
-                console.log("Cargando nueva simulación...");
+                const dirInput = document.getElementById("dirInput");
+
+                // Si el navegador soporta showDirectoryPicker (File System Access API), podemos intentar usarlo.
+                if (window.showDirectoryPicker) {
+                    // Para simplicidad y compatibilidad, abrimos igualmente el input oculto como respaldo.
+                    // Una implementación más completa podría recorrer el DirectoryHandle y subir archivos.
+                    dirInput.click();
+                    return;
+                }
+
+                // Flujo por defecto: activamos el input oculto con webkitdirectory
+                dirInput.value = null; // reset
+                dirInput.click();
             }
+
+            // Evento: usuario seleccionó una carpeta mediante el input oculto
+            document
+                .getElementById("dirInput")
+                .addEventListener("change", async (e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (!files.length) return;
+
+                    // Determinar nombre de la carpeta raíz seleccionada (si webkitRelativePath está presente)
+                    const first = files[0];
+                    const rel = first.webkitRelativePath || first.name;
+                    const rootName = rel.includes("/")
+                        ? rel.split("/")[0]
+                        : rel;
+
+                    if (
+                        !confirm(
+                            `Importar carpeta '${rootName}' con ${files.length} archivos?`,
+                        )
+                    ) {
+                        return;
+                    }
+
+                    const formData = new FormData();
+                    formData.append("nombre", rootName);
+
+                    // Adjuntamos cada archivo con su ruta relativa como nombre de archivo en el form
+                    files.forEach((f) => {
+                        const relativePath = f.webkitRelativePath || f.name;
+                        formData.append("files", f, relativePath);
+                    });
+
+                    const btn = document.getElementById("btnLoadSim");
+                    btn.disabled = true;
+                    btn.textContent = "Subiendo...";
+
+                    try {
+                        const res = await fetch("/api/simulaciones/upload", {
+                            method: "POST",
+                            body: formData,
+                        });
+
+                        if (!res.ok) {
+                            const text = await res.text();
+                            alert("Error al subir la simulación: " + text);
+                        } else {
+                            const data = await res.json();
+                            alert("Simulación importada: " + data.nombre);
+                            // posible refresco de la lista o redirección
+                            // location.reload();
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert(
+                            "Error de red al subir la simulación. Ver consola para más detalles.",
+                        );
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML =
+                            '<i class="ti ti-folder-plus"></i> Cargar simulación';
+                    }
+                });
 
             /**
              * Maneja la visualización de detalles de una simulación
