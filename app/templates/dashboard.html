@@ -8,7 +8,7 @@
         <!-- CSS del dashboard -->
         <link
             rel="stylesheet"
-            href="{{ url_for('static', path='dashboard.css') }}"
+            href="{{ url_for('static', path='dashboard.css') }}?v=upload-preview-modal-3"
         />
 
         <!-- Iconos de Tabler -->
@@ -49,25 +49,117 @@
                 style="display: none"
             />
 
+            <section
+                id="uploadPreview"
+                class="upload-preview"
+                aria-live="polite"
+                hidden
+            >
+                <div class="upload-preview-card">
+                    <div class="upload-preview-header">
+                        <div>
+                            <div class="upload-preview-label">
+                                Previsualización de carga
+                            </div>
+                            <h2 class="upload-preview-title">
+                                Revisar simulación
+                            </h2>
+                        </div>
+                        <button
+                            type="button"
+                            class="icon-button"
+                            onclick="cancelSimulationImport()"
+                            aria-label="Cancelar carga"
+                            title="Cancelar carga"
+                        >
+                            <i class="ti ti-x"></i>
+                        </button>
+                    </div>
+
+                    <div class="upload-preview-grid">
+                        <div class="upload-field">
+                            <label for="simulationNameInput">
+                                Nombre de la simulación
+                            </label>
+                            <input
+                                id="simulationNameInput"
+                                type="text"
+                                class="upload-input"
+                                autocomplete="off"
+                            />
+                        </div>
+
+                        <div class="upload-field">
+                            <span>Ruta seleccionada</span>
+                            <div
+                                id="selectedPathText"
+                                class="selected-path"
+                            ></div>
+                        </div>
+                    </div>
+
+                    <div class="detected-files-header">
+                        <span id="detectedFilesCount">Archivos detectados</span>
+                        <button
+                            id="toggleFilesButton"
+                            type="button"
+                            class="text-button"
+                            onclick="toggleDetectedFiles()"
+                            hidden
+                        >
+                            Mostrar más
+                        </button>
+                    </div>
+
+                    <ul id="detectedFilesList" class="detected-files-list"></ul>
+
+                    <div
+                        id="uploadStatus"
+                        class="upload-status"
+                        role="status"
+                        hidden
+                    ></div>
+
+                    <div class="upload-preview-actions">
+                        <button
+                            type="button"
+                            class="secondary-button"
+                            onclick="cancelSimulationImport()"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            id="acceptUploadButton"
+                            type="button"
+                            class="primary-button"
+                            onclick="acceptSimulationImport()"
+                        >
+                            <i class="ti ti-check"></i>
+                            Aceptar
+                        </button>
+                    </div>
+                </div>
+            </section>
+
             <!-- ============================================
              MÉTRICAS
              ============================================ -->
             <div class="metrics-grid">
                 <div class="metric-card">
                     <div class="metric-label">Total simulaciones</div>
-                    <div class="metric-value">127</div>
+                    <div class="metric-value">{{ total_simulations }}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Analizadas</div>
-                    <div class="metric-value">89</div>
+                    <div class="metric-value">{{ analyzed_simulations }}</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-label">Almacenamiento</div>
-                    <div class="metric-value">2.4 TB</div>
+                    <div class="metric-label">Archivos totales</div>
+                    <div class="metric-value">{{ total_files }}</div>
                 </div>
                 <div class="metric-card success">
-                    <div class="metric-label">Espacio liberable</div>
-                    <div class="metric-value">438 GB</div>
+                    <div class="metric-label">Almacenamiento</div>
+                    <div class="metric-value">{{ total_storage }}</div>
                 </div>
             </div>
 
@@ -78,31 +170,28 @@
                 <input
                     type="text"
                     class="search-input"
-                    placeholder="Buscar simulación..."
+                    placeholder="Buscar simulación o software..."
                     id="searchInput"
                     onkeyup="handleSearch(this.value)"
                 />
                 <select
                     class="filter-select"
-                    id="subjectFilter"
+                    id="statusFilter"
                     onchange="handleFilterChange()"
                 >
-                    <option value="">Todas las materias</option>
-                    <option value="proteinas">Proteínas</option>
-                    <option value="membranas">Membranas</option>
-                    <option value="polimeros">Polímeros</option>
-                    <option value="nanoparticulas">Nanopartículas</option>
+                    <option value="">Todos los estados</option>
+                    <option value="success">Analizado</option>
+                    <option value="pendiente">Pendiente</option>
                 </select>
                 <select
                     class="filter-select"
-                    id="programFilter"
+                    id="softwareFilter"
                     onchange="handleFilterChange()"
                 >
                     <option value="">Todos los programas</option>
-                    <option value="gromacs">GROMACS</option>
-                    <option value="amber">AMBER</option>
-                    <option value="namd">NAMD</option>
-                    <option value="lammps">LAMMPS</option>
+                    {% for software in available_software %}
+                    <option value="{{ software|lower }}">{{ software }}</option>
+                    {% endfor %}
                 </select>
             </div>
 
@@ -110,288 +199,78 @@
              SECCIÓN DE SIMULACIONES
              ============================================ -->
             <div class="simulations-section">
-                <h2 class="section-title">Simulaciones recientes</h2>
+                <h2 class="section-title">Simulaciones registradas</h2>
 
                 <div class="simulations-list" id="simulationsList">
-                    <!-- Simulación 1 -->
+                    {% if simulations %}
+                        {% for simulation in simulations %}
                     <div
                         class="simulation-row"
-                        onclick="handleViewSimulation('protein_folding_md_001')"
+                        data-simulation-row="true"
+                        data-simulation-id="{{ simulation.id }}"
+                        data-name="{{ simulation.nombre|lower }}"
+                        data-software="{{ (simulation.software or 'Sin software')|lower }}"
+                        data-status="{{ simulation.status_class }}"
+                        onclick="handleViewSimulation('{{ simulation.id }}')"
                     >
                         <div class="simulation-row-header">
                             <div class="simulation-row-left">
                                 <div class="simulation-name-container">
                                     <h3 class="simulation-name">
-                                        protein_folding_md_001
+                                        {{ simulation.nombre }}
                                     </h3>
-                                    <span class="status-badge success">
-                                        <i class="ti ti-check"></i> Analizado
+                                    <span class="status-badge {{ simulation.status_class }}">
+                                        <i class="ti {{ simulation.status_icon }}"></i>
+                                        {{ simulation.status_label }}
                                     </span>
                                 </div>
                                 <div class="tags-container">
                                     <span class="tag subject">
                                         <i class="ti ti-test-pipe"></i>
-                                        Proteínas
+                                        BBDD
                                     </span>
                                     <span class="tag program">
                                         <i class="ti ti-box"></i>
-                                        GROMACS
+                                        {{ simulation.software or 'Sin software' }}
                                     </span>
                                     <span class="tag duration">
-                                        <i class="ti ti-clock"></i>
-                                        100 ns
+                                        <i class="ti ti-files"></i>
+                                        {{ simulation.file_count }} archivos
                                     </span>
                                     <span class="tag storage">
                                         <i class="ti ti-database"></i>
-                                        42.3 GB
+                                        {{ simulation.size_label }}
                                     </span>
                                 </div>
                             </div>
                             <div class="simulation-row-right">
                                 <div class="modification-label">
-                                    Última modificación
-                                </div>
-                                <div class="modification-time">Hace 2 días</div>
-                            </div>
-                        </div>
-                        <div class="simulation-description">
-                            Simulación de dinámica molecular para estudio de
-                            plegamiento de proteína en solución acuosa
-                        </div>
-                    </div>
-
-                    <!-- Simulación 2 -->
-                    <div
-                        class="simulation-row"
-                        onclick="handleViewSimulation('membrane_transport_eq')"
-                    >
-                        <div class="simulation-row-header">
-                            <div class="simulation-row-left">
-                                <div class="simulation-name-container">
-                                    <h3 class="simulation-name">
-                                        membrane_transport_eq
-                                    </h3>
-                                    <span class="status-badge success">
-                                        <i class="ti ti-check"></i> Analizado
-                                    </span>
-                                </div>
-                                <div class="tags-container">
-                                    <span class="tag subject">
-                                        <i class="ti ti-test-pipe"></i>
-                                        Membranas
-                                    </span>
-                                    <span class="tag program">
-                                        <i class="ti ti-box"></i>
-                                        AMBER
-                                    </span>
-                                    <span class="tag duration">
-                                        <i class="ti ti-clock"></i>
-                                        250 ns
-                                    </span>
-                                    <span class="tag storage">
-                                        <i class="ti ti-database"></i>
-                                        128.7 GB
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="simulation-row-right">
-                                <div class="modification-label">
-                                    Última modificación
+                                    Registrada
                                 </div>
                                 <div class="modification-time">
-                                    Hace 1 semana
+                                    {{ simulation.fecha_registro.strftime('%d/%m/%Y %H:%M') if simulation.fecha_registro else 'Sin fecha' }}
                                 </div>
                             </div>
                         </div>
                         <div class="simulation-description">
-                            Equilibración de sistema membrana lipídica con canal
-                            de transporte iónico
+                            Ruta: {{ simulation.ruta_absoluta }}
                         </div>
                     </div>
-
-                    <!-- Simulación 3 -->
-                    <div
-                        class="simulation-row"
-                        onclick="handleViewSimulation('polymer_chain_replica')"
-                    >
-                        <div class="simulation-row-header">
-                            <div class="simulation-row-left">
-                                <div class="simulation-name-container">
-                                    <h3 class="simulation-name">
-                                        polymer_chain_replica
-                                    </h3>
-                                    <span class="status-badge warning">
-                                        <i class="ti ti-refresh"></i> Analizando
-                                    </span>
-                                </div>
-                                <div class="tags-container">
-                                    <span class="tag subject">
-                                        <i class="ti ti-test-pipe"></i>
-                                        Polímeros
-                                    </span>
-                                    <span class="tag program">
-                                        <i class="ti ti-box"></i>
-                                        LAMMPS
-                                    </span>
-                                    <span class="tag duration">
-                                        <i class="ti ti-clock"></i>
-                                        500 ns
-                                    </span>
-                                    <span class="tag storage">
-                                        <i class="ti ti-database"></i>
-                                        87.2 GB
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="simulation-row-right">
-                                <div class="modification-label">
-                                    Última modificación
-                                </div>
-                                <div class="modification-time">
-                                    Hace 3 horas
-                                </div>
-                            </div>
-                        </div>
-                        <div class="simulation-description">
-                            Simulación réplica de cadena polimérica con
-                            diferentes condiciones termodinámicas
-                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <div class="empty-state">
+                        No hay simulaciones registradas en la base de datos.
                     </div>
-
-                    <!-- Simulación 4 -->
-                    <div
-                        class="simulation-row"
-                        onclick="
-                            handleViewSimulation('nano_particle_interface')
-                        "
-                    >
-                        <div class="simulation-row-header">
-                            <div class="simulation-row-left">
-                                <div class="simulation-name-container">
-                                    <h3 class="simulation-name">
-                                        nano_particle_interface
-                                    </h3>
-                                    <span class="status-badge pending">
-                                        <i class="ti ti-hourglass"></i>
-                                        Pendiente
-                                    </span>
-                                </div>
-                                <div class="tags-container">
-                                    <span class="tag subject">
-                                        <i class="ti ti-test-pipe"></i>
-                                        Nanopartículas
-                                    </span>
-                                    <span class="tag program">
-                                        <i class="ti ti-box"></i>
-                                        NAMD
-                                    </span>
-                                    <span class="tag duration">
-                                        <i class="ti ti-clock"></i>
-                                        75 ns
-                                    </span>
-                                    <span class="tag storage">
-                                        <i class="ti ti-database"></i>
-                                        31.8 GB
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="simulation-row-right">
-                                <div class="modification-label">
-                                    Última modificación
-                                </div>
-                                <div class="modification-time">
-                                    Hace 2 semanas
-                                </div>
-                            </div>
-                        </div>
-                        <div class="simulation-description">
-                            Estudio de interacciones en interfaz
-                            nanopartícula-proteína en medio biológico
-                        </div>
-                    </div>
-
-                    <!-- Simulación 5 -->
-                    <div
-                        class="simulation-row"
-                        onclick="handleViewSimulation('dna_histone_binding')"
-                    >
-                        <div class="simulation-row-header">
-                            <div class="simulation-row-left">
-                                <div class="simulation-name-container">
-                                    <h3 class="simulation-name">
-                                        dna_histone_binding
-                                    </h3>
-                                    <span class="status-badge success">
-                                        <i class="ti ti-check"></i> Analizado
-                                    </span>
-                                </div>
-                                <div class="tags-container">
-                                    <span class="tag subject">
-                                        <i class="ti ti-test-pipe"></i>
-                                        Proteínas
-                                    </span>
-                                    <span class="tag program">
-                                        <i class="ti ti-box"></i>
-                                        GROMACS
-                                    </span>
-                                    <span class="tag duration">
-                                        <i class="ti ti-clock"></i>
-                                        200 ns
-                                    </span>
-                                    <span class="tag storage">
-                                        <i class="ti ti-database"></i>
-                                        95.4 GB
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="simulation-row-right">
-                                <div class="modification-label">
-                                    Última modificación
-                                </div>
-                                <div class="modification-time">
-                                    Hace 3 semanas
-                                </div>
-                            </div>
-                        </div>
-                        <div class="simulation-description">
-                            Análisis de unión ADN-histona y modificaciones
-                            conformacionales del nucleosoma
-                        </div>
-                    </div>
+                    {% endif %}
                 </div>
             </div>
 
             <!-- ============================================
              PAGINACIÓN
              ============================================ -->
-            <div class="pagination-container">
-                <div class="pagination-info">
-                    Mostrando 5 de 127 simulaciones
-                </div>
-                <div class="pagination-buttons">
-                    <button
-                        class="pagination-button"
-                        onclick="previousPage()"
-                        disabled
-                    >
-                        <i class="ti ti-chevron-left"></i>
-                    </button>
-                    <button
-                        class="pagination-button active"
-                        onclick="goToPage(1)"
-                    >
-                        1
-                    </button>
-                    <button class="pagination-button" onclick="goToPage(2)">
-                        2
-                    </button>
-                    <button class="pagination-button" onclick="goToPage(3)">
-                        3
-                    </button>
-                    <button class="pagination-button" onclick="nextPage()">
-                        <i class="ti ti-chevron-right"></i>
-                    </button>
-                </div>
+            <div class="pagination-container" id="paginationContainer">
+                <div class="pagination-info" id="paginationInfo"></div>
+                <div class="pagination-buttons" id="paginationButtons"></div>
             </div>
         </div>
 
@@ -402,8 +281,12 @@
             // Estado de la aplicación
             let currentPage = 1;
             let currentSearch = "";
-            let currentSubjectFilter = "";
-            let currentProgramFilter = "";
+            let currentStatusFilter = "";
+            let currentSoftwareFilter = "";
+            let pendingSimulationImport = null;
+            let showingAllDetectedFiles = false;
+            const initialDetectedFilesLimit = 5;
+            const simulationsPerPage = 5;
 
             /**
              * Maneja la carga de una nueva simulación
@@ -427,74 +310,202 @@
             // Evento: usuario seleccionó una carpeta mediante el input oculto
             document
                 .getElementById("dirInput")
-                .addEventListener("change", async (e) => {
+                .addEventListener("change", (e) => {
                     const files = Array.from(e.target.files || []);
                     if (!files.length) return;
 
-                    // Determinar nombre de la carpeta raíz seleccionada (si webkitRelativePath está presente)
-                    const first = files[0];
-                    const rel = first.webkitRelativePath || first.name;
-                    const rootName = rel.includes("/")
-                        ? rel.split("/")[0]
-                        : rel;
+                    showSimulationImportPreview(files);
+                });
 
-                    if (
-                        !confirm(
-                            `Importar carpeta '${rootName}' con ${files.length} archivos?`,
-                        )
-                    ) {
-                        return;
-                    }
+            function getRelativeFilePath(file) {
+                return file.webkitRelativePath || file.name;
+            }
 
-                    const formData = new FormData();
-                    formData.append("nombre", rootName);
+            function getRootFolderName(files) {
+                const rel = getRelativeFilePath(files[0]);
+                return rel.includes("/") ? rel.split("/")[0] : rel;
+            }
 
-                    // Adjuntamos cada archivo con su ruta relativa como nombre de archivo en el form
-                    files.forEach((f) => {
-                        const relativePath = f.webkitRelativePath || f.name;
-                        formData.append("files", f, relativePath);
+            function formatFileSize(bytes) {
+                if (bytes === 0) return "0 B";
+
+                const units = ["B", "KB", "MB", "GB", "TB"];
+                const exponent = Math.min(
+                    Math.floor(Math.log(bytes) / Math.log(1024)),
+                    units.length - 1,
+                );
+                const value = bytes / Math.pow(1024, exponent);
+
+                return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+            }
+
+            function showSimulationImportPreview(files) {
+                const rootName = getRootFolderName(files);
+                const preview = document.getElementById("uploadPreview");
+                const nameInput = document.getElementById(
+                    "simulationNameInput",
+                );
+                const selectedPathText =
+                    document.getElementById("selectedPathText");
+
+                pendingSimulationImport = {
+                    files,
+                    rootName,
+                };
+                showingAllDetectedFiles = false;
+
+                nameInput.value = rootName;
+                selectedPathText.textContent = rootName;
+                preview.hidden = false;
+                document.body.classList.add("modal-open");
+
+                setUploadStatus("", "");
+                renderDetectedFiles();
+                nameInput.focus();
+                nameInput.select();
+            }
+
+            function renderDetectedFiles() {
+                if (!pendingSimulationImport) return;
+
+                const { files } = pendingSimulationImport;
+                const filesList = document.getElementById("detectedFilesList");
+                const filesCount =
+                    document.getElementById("detectedFilesCount");
+                const toggleButton =
+                    document.getElementById("toggleFilesButton");
+                const visibleFiles = showingAllDetectedFiles
+                    ? files
+                    : files.slice(0, initialDetectedFilesLimit);
+
+                filesCount.textContent = `${files.length} archivos detectados`;
+                filesList.innerHTML = "";
+
+                visibleFiles.forEach((file) => {
+                    const item = document.createElement("li");
+                    item.className = "detected-file-item";
+
+                    const path = document.createElement("span");
+                    path.className = "detected-file-path";
+                    path.textContent = getRelativeFilePath(file);
+
+                    const size = document.createElement("span");
+                    size.className = "detected-file-size";
+                    size.textContent = formatFileSize(file.size);
+
+                    item.append(path, size);
+                    filesList.appendChild(item);
+                });
+
+                toggleButton.hidden =
+                    files.length <= initialDetectedFilesLimit;
+                toggleButton.textContent = showingAllDetectedFiles
+                    ? "Mostrar menos"
+                    : `Mostrar más (${files.length - initialDetectedFilesLimit})`;
+            }
+
+            function toggleDetectedFiles() {
+                showingAllDetectedFiles = !showingAllDetectedFiles;
+                renderDetectedFiles();
+            }
+
+            function cancelSimulationImport() {
+                pendingSimulationImport = null;
+                showingAllDetectedFiles = false;
+                document.getElementById("uploadPreview").hidden = true;
+                document.body.classList.remove("modal-open");
+                document.getElementById("dirInput").value = null;
+                setUploadStatus("", "");
+            }
+
+            function setUploadStatus(message, type) {
+                const status = document.getElementById("uploadStatus");
+                status.textContent = message;
+                status.className = type
+                    ? `upload-status ${type}`
+                    : "upload-status";
+                status.hidden = !message;
+            }
+
+            async function acceptSimulationImport() {
+                if (!pendingSimulationImport) return;
+
+                const { files, rootName } = pendingSimulationImport;
+                const nameInput = document.getElementById(
+                    "simulationNameInput",
+                );
+                const simName = nameInput.value.trim() || rootName;
+                const formData = new FormData();
+
+                formData.append("nombre", simName);
+
+                // Adjuntamos cada archivo con su ruta relativa como nombre de archivo en el form
+                files.forEach((f) => {
+                    formData.append("files", f, getRelativeFilePath(f));
+                });
+
+                const btn = document.getElementById("btnLoadSim");
+                const acceptButton =
+                    document.getElementById("acceptUploadButton");
+                btn.disabled = true;
+                acceptButton.disabled = true;
+                btn.textContent = "Subiendo...";
+                acceptButton.innerHTML =
+                    '<i class="ti ti-loader-2"></i> Subiendo...';
+                setUploadStatus("Subiendo archivos...", "info");
+
+                try {
+                    const res = await fetch("/api/simulaciones/upload", {
+                        method: "POST",
+                        body: formData,
                     });
 
-                    const btn = document.getElementById("btnLoadSim");
-                    btn.disabled = true;
-                    btn.textContent = "Subiendo...";
-
-                    try {
-                        const res = await fetch("/api/simulaciones/upload", {
-                            method: "POST",
-                            body: formData,
-                        });
-
-                        if (!res.ok) {
-                            const text = await res.text();
-                            alert("Error al subir la simulación: " + text);
-                        } else {
-                            const data = await res.json();
-                            alert("Simulación importada: " + data.nombre);
-                            // posible refresco de la lista o redirección
-                            // location.reload();
-                        }
-                    } catch (err) {
-                        console.error(err);
-                        alert(
-                            "Error de red al subir la simulación. Ver consola para más detalles.",
+                    if (!res.ok) {
+                        const text = await res.text();
+                        setUploadStatus(
+                            "Error al subir la simulación: " + text,
+                            "error",
                         );
-                    } finally {
-                        btn.disabled = false;
-                        btn.innerHTML =
-                            '<i class="ti ti-folder-plus"></i> Cargar simulación';
+                    } else {
+                        const data = await res.json();
+                        setUploadStatus(
+                            "Simulación importada: " + data.nombre,
+                            "success",
+                        );
+                        pendingSimulationImport = null;
+                        document.getElementById("dirInput").value = null;
+                        setTimeout(() => {
+                            document.getElementById(
+                                "uploadPreview",
+                            ).hidden = true;
+                            document.body.classList.remove("modal-open");
+                            setUploadStatus("", "");
+                        }, 1400);
+                        // posible refresco de la lista o redirección
+                        // location.reload();
                     }
-                });
+                } catch (err) {
+                    console.error(err);
+                    setUploadStatus(
+                        "Error de red al subir la simulación. Ver consola para más detalles.",
+                        "error",
+                    );
+                } finally {
+                    btn.disabled = false;
+                    acceptButton.disabled = false;
+                    btn.innerHTML =
+                        '<i class="ti ti-folder-plus"></i> Cargar simulación';
+                    acceptButton.innerHTML =
+                        '<i class="ti ti-check"></i> Aceptar';
+                }
+            }
 
             /**
              * Maneja la visualización de detalles de una simulación
              * @param {string} simulationId - ID de la simulación
              */
             function handleViewSimulation(simulationId) {
-                alert(
-                    `Función: Ver detalles\n\nAbriendo detalles de la simulación: ${simulationId}\n\nAquí se ejecutaría automáticamente el análisis si aún no está completo.`,
-                );
-                console.log(`Viendo detalles de: ${simulationId}`);
+                window.location.href = `/simulaciones/${simulationId}`;
             }
 
             /**
@@ -504,6 +515,7 @@
             function handleSearch(searchTerm) {
                 currentSearch = searchTerm.toLowerCase();
                 console.log(`Buscando: ${currentSearch}`);
+                currentPage = 1;
                 filterSimulations();
             }
 
@@ -511,13 +523,14 @@
              * Maneja cambios en los filtros
              */
             function handleFilterChange() {
-                currentSubjectFilter =
-                    document.getElementById("subjectFilter").value;
-                currentProgramFilter =
-                    document.getElementById("programFilter").value;
+                currentStatusFilter =
+                    document.getElementById("statusFilter").value;
+                currentSoftwareFilter =
+                    document.getElementById("softwareFilter").value;
                 console.log(
-                    `Filtro materia: ${currentSubjectFilter}, Filtro programa: ${currentProgramFilter}`,
+                    `Filtro estado: ${currentStatusFilter}, Filtro software: ${currentSoftwareFilter}`,
                 );
+                currentPage = 1;
                 filterSimulations();
             }
 
@@ -525,57 +538,123 @@
              * Filtra las simulaciones según los criterios activos
              */
             function filterSimulations() {
-                const rows = document.querySelectorAll(".simulation-row");
-
-                rows.forEach((row) => {
+                const rows = Array.from(
+                    document.querySelectorAll("[data-simulation-row='true']"),
+                );
+                const filteredRows = rows.filter((row) => {
                     let show = true;
+                    const name = row.dataset.name || "";
+                    const software = row.dataset.software || "";
+                    const status = row.dataset.status || "";
+                    const searchableText = `${name} ${software} ${row.textContent}`.toLowerCase();
 
                     // Filtro de búsqueda
                     if (currentSearch) {
-                        const name = row
-                            .querySelector(".simulation-name")
-                            .textContent.toLowerCase();
-                        const description = row
-                            .querySelector(".simulation-description")
-                            .textContent.toLowerCase();
-                        show =
-                            show &&
-                            (name.includes(currentSearch) ||
-                                description.includes(currentSearch));
+                        show = show && searchableText.includes(currentSearch);
                     }
 
-                    // Filtro de materia
-                    if (currentSubjectFilter) {
-                        const tags =
-                            row.querySelector(".tags-container").textContent;
-                        const subjectMap = {
-                            proteinas: "Proteínas",
-                            membranas: "Membranas",
-                            polimeros: "Polímeros",
-                            nanoparticulas: "Nanopartículas",
-                        };
-                        show =
-                            show &&
-                            tags.includes(subjectMap[currentSubjectFilter]);
+                    // Filtro de estado
+                    if (currentStatusFilter) {
+                        show = show && status === currentStatusFilter;
                     }
 
-                    // Filtro de programa
-                    if (currentProgramFilter) {
-                        const tags =
-                            row.querySelector(".tags-container").textContent;
-                        const programMap = {
-                            gromacs: "GROMACS",
-                            amber: "AMBER",
-                            namd: "NAMD",
-                            lammps: "LAMMPS",
-                        };
-                        show =
-                            show &&
-                            tags.includes(programMap[currentProgramFilter]);
+                    // Filtro de software
+                    if (currentSoftwareFilter) {
+                        show = show && software === currentSoftwareFilter;
                     }
 
-                    row.style.display = show ? "block" : "none";
+                    return show;
                 });
+
+                renderPaginatedSimulations(filteredRows);
+            }
+
+            function renderPaginatedSimulations(filteredRows) {
+                const rows = Array.from(
+                    document.querySelectorAll("[data-simulation-row='true']"),
+                );
+                const totalItems = filteredRows.length;
+                const totalPages = Math.max(
+                    1,
+                    Math.ceil(totalItems / simulationsPerPage),
+                );
+
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+
+                rows.forEach((row) => {
+                    row.style.display = "none";
+                });
+
+                const startIndex = (currentPage - 1) * simulationsPerPage;
+                const visibleRows = filteredRows.slice(
+                    startIndex,
+                    startIndex + simulationsPerPage,
+                );
+
+                visibleRows.forEach((row) => {
+                    row.style.display = "block";
+                });
+
+                renderPagination(totalItems, totalPages);
+            }
+
+            function renderPagination(totalItems, totalPages) {
+                const paginationContainer = document.getElementById(
+                    "paginationContainer",
+                );
+                const paginationInfo = document.getElementById("paginationInfo");
+                const paginationButtons = document.getElementById(
+                    "paginationButtons",
+                );
+
+                if (!paginationContainer || !paginationInfo || !paginationButtons) {
+                    return;
+                }
+
+                if (!totalItems) {
+                    paginationContainer.hidden = true;
+                    paginationButtons.innerHTML = "";
+                    paginationInfo.textContent = "";
+                    return;
+                }
+
+                const firstItem = (currentPage - 1) * simulationsPerPage + 1;
+                const lastItem = Math.min(
+                    currentPage * simulationsPerPage,
+                    totalItems,
+                );
+
+                paginationContainer.hidden = false;
+                paginationInfo.textContent = `Mostrando ${firstItem}-${lastItem} de ${totalItems} simulaciones`;
+
+                paginationButtons.innerHTML = "";
+
+                const previousButton = document.createElement("button");
+                previousButton.className = "pagination-button";
+                previousButton.innerHTML = '<i class="ti ti-chevron-left"></i>';
+                previousButton.disabled = currentPage === 1;
+                previousButton.addEventListener("click", previousPage);
+                paginationButtons.appendChild(previousButton);
+
+                for (let page = 1; page <= totalPages; page += 1) {
+                    const pageButton = document.createElement("button");
+                    pageButton.className = "pagination-button";
+                    if (page === currentPage) {
+                        pageButton.classList.add("active");
+                    }
+                    pageButton.textContent = String(page);
+                    pageButton.addEventListener("click", () => goToPage(page));
+                    paginationButtons.appendChild(pageButton);
+                }
+
+                const nextButton = document.createElement("button");
+                nextButton.className = "pagination-button";
+                nextButton.innerHTML = '<i class="ti ti-chevron-right"></i>';
+                nextButton.disabled = currentPage === totalPages;
+                nextButton.addEventListener("click", nextPage);
+                paginationButtons.appendChild(nextButton);
             }
 
             /**
@@ -584,7 +663,7 @@
             function previousPage() {
                 if (currentPage > 1) {
                     currentPage--;
-                    updatePagination();
+                    filterSimulations();
                 }
             }
 
@@ -593,7 +672,7 @@
              */
             function nextPage() {
                 currentPage++;
-                updatePagination();
+                filterSimulations();
             }
 
             /**
@@ -602,28 +681,7 @@
              */
             function goToPage(pageNumber) {
                 currentPage = pageNumber;
-                updatePagination();
-            }
-
-            /**
-             * Actualiza el estado de la paginación
-             */
-            function updatePagination() {
-                // Actualizar botones activos
-                document
-                    .querySelectorAll(".pagination-button")
-                    .forEach((btn) => {
-                        btn.classList.remove("active");
-                    });
-
-                const activeBtn = document.querySelector(
-                    `.pagination-button[onclick="goToPage(${currentPage})"]`,
-                );
-                if (activeBtn) {
-                    activeBtn.classList.add("active");
-                }
-
-                console.log(`Navegando a página: ${currentPage}`);
+                filterSimulations();
             }
 
             /**
@@ -631,7 +689,7 @@
              */
             document.addEventListener("DOMContentLoaded", () => {
                 console.log("Dashboard cargado correctamente");
-                updatePagination();
+                filterSimulations();
             });
 
             /**
@@ -642,6 +700,7 @@
                     event.key === "Enter" &&
                     document.activeElement.id === "searchInput"
                 ) {
+                    currentPage = 1;
                     filterSimulations();
                 }
             });

@@ -13,6 +13,18 @@ from app.models.schemas import SimulacionCreate, SimulacionOut
 from app.services.escaner import list_simulations, register_simulation
 
 
+def format_bytes(size: int) -> str:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    value = float(size or 0)
+    unit_index = 0
+    while value >= 1024 and unit_index < len(units) - 1:
+        value /= 1024
+        unit_index += 1
+    if unit_index == 0 or value >= 10:
+        return f"{value:.0f} {units[unit_index]}"
+    return f"{value:.1f} {units[unit_index]}"
+
+
 def create_app():
     app = FastAPI(title="simulAR", version="0.1.0")
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -31,11 +43,61 @@ def create_app():
         init_db()
 
     @app.get("/", response_class=HTMLResponse)
-    async def dashboard(request: Request):
-        return templates.TemplateResponse(
+    async def dashboard(request: Request, db: Session = Depends(get_db)):
+        simulations = list_simulations(db)
+        simulation_rows = []
+        total_bytes = 0
+        total_files = 0
+        analyzed_count = 0
+        available_software = []
+        seen_software = set()
+
+        for sim in simulations:
+            file_count = len(sim.archivos)
+            sim_bytes = sum(
+                archivo.tamano_bytes or 0 for archivo in sim.archivos
+            )
+            total_bytes += sim_bytes
+            total_files += file_count
+            if sim.metricas:
+                analyzed_count += 1
+
+            software = sim.software or "Sin software"
+            software_key = software.strip().lower()
+            if software_key not in seen_software:
+                seen_software.add(software_key)
+                available_software.append(software)
+
+            simulation_rows.append(
+                {
+                    "id": sim.id,
+                    "nombre": sim.nombre,
+                    "ruta_absoluta": sim.ruta_absoluta,
+                    "software": sim.software or "Sin software",
+                    "fecha_registro": sim.fecha_registro,
+                    "file_count": file_count,
+                    "size_label": format_bytes(sim_bytes),
+                    "status_label": "Analizado" if sim.metricas else "Pendiente",
+                    "status_class": "success" if sim.metricas else "pending",
+                    "status_icon": "ti-check" if sim.metricas else "ti-hourglass",
+                }
+            )
+
+        response = templates.TemplateResponse(
             request,
             "dashboard.html",
+            {
+                "simulations": simulation_rows,
+                "total_simulations": len(simulation_rows),
+                "analyzed_simulations": analyzed_count,
+                "total_files": total_files,
+                "total_storage": format_bytes(total_bytes),
+                "available_software": available_software,
+            },
         )
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        return response
 
     @app.get("/simulaciones/{simulation_id}", response_class=HTMLResponse)
     async def detalle(request: Request, simulation_id: str):
