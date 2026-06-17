@@ -44,6 +44,10 @@ class SimulacionCreate(BaseModel):
     metadata: Optional[dict[str, Any]] = None
 
 
+class AnalisisRequest(BaseModel):
+    metricas: List[str] = ["rmsd", "rg"]
+
+
 class ScanDirectoryRequest(BaseModel):
     ruta_absoluta: str
     registrar: bool = True

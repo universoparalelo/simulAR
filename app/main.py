@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db, init_db
 from app.models.schemas import (
+    AnalisisRequest,
     MetricaCreate,
     MetricaOut,
     ScanDirectoryRequest,
@@ -191,6 +192,26 @@ def create_app():
             raise HTTPException(status_code=500, detail=str(exc))
 
         return sim
+
+    @app.post("/api/simulaciones/{simulacion_id}/analizar")
+    def analizar(
+        simulacion_id: int,
+        payload: AnalisisRequest,
+        db: Session = Depends(get_db),
+    ):
+        """Ejecuta el pipeline de análisis (RMSD, radio de giro) sobre una simulación
+        y guarda los resultados en la DB."""
+        from app.services.analizador import analizar_simulacion
+
+        try:
+            resultado = analizar_simulacion(db, simulacion_id, metricas=payload.metricas)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+        return resultado
 
     @app.post("/api/simulaciones/{simulacion_id}/rescan", response_model=SimulacionOut)
     def rescan_simulation(simulacion_id: int, db: Session = Depends(get_db)):
