@@ -9,7 +9,14 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db, init_db
-from app.models.schemas import SimulacionCreate, SimulacionOut
+from app.models.schemas import (
+    MetricaCreate,
+    MetricaOut,
+    SimulacionCreate,
+    SimulacionOut,
+    SimulacionUpdate,
+)
+from app.repositories import archivo_repo, metrica_repo, simulacion_repo
 from app.services.escaner import list_simulations, register_simulation
 
 
@@ -172,8 +179,89 @@ def create_app():
 
     @app.get("/api/simulaciones", response_model=List[SimulacionOut])
     def get_simulations(db: Session = Depends(get_db)):
-        sims = list_simulations(db)
-        return sims
+        return list_simulations(db)
+
+    @app.get("/api/simulaciones/{simulacion_id}", response_model=SimulacionOut)
+    def get_simulation(simulacion_id: int, db: Session = Depends(get_db)):
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        return sim
+
+    @app.put("/api/simulaciones/{simulacion_id}", response_model=SimulacionOut)
+    def update_simulation(
+        simulacion_id: int,
+        payload: SimulacionUpdate,
+        db: Session = Depends(get_db),
+    ):
+        sim = simulacion_repo.update(
+            db,
+            simulacion_id,
+            nombre=payload.nombre,
+            software=payload.software,
+            metadata=payload.metadata,
+        )
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        return sim
+
+    @app.delete("/api/simulaciones/{simulacion_id}", status_code=204)
+    def delete_simulation(simulacion_id: int, db: Session = Depends(get_db)):
+        deleted = simulacion_repo.delete(db, simulacion_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+
+    # --- Archivos ---
+
+    @app.get("/api/simulaciones/{simulacion_id}/archivos")
+    def get_archivos(simulacion_id: int, db: Session = Depends(get_db)):
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        return archivo_repo.get_by_simulacion(db, simulacion_id)
+
+    @app.delete("/api/archivos/{archivo_id}", status_code=204)
+    def delete_archivo(archivo_id: int, db: Session = Depends(get_db)):
+        deleted = archivo_repo.delete(db, archivo_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    # --- Métricas ---
+
+    @app.get("/api/simulaciones/{simulacion_id}/metricas", response_model=List[MetricaOut])
+    def get_metricas(simulacion_id: int, db: Session = Depends(get_db)):
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        return metrica_repo.get_by_simulacion(db, simulacion_id)
+
+    @app.post(
+        "/api/simulaciones/{simulacion_id}/metricas",
+        response_model=MetricaOut,
+        status_code=201,
+    )
+    def create_metrica(
+        simulacion_id: int,
+        payload: MetricaCreate,
+        db: Session = Depends(get_db),
+    ):
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        return metrica_repo.create(db, simulacion_id, payload.tipo_metrica, payload.valores)
+
+    @app.delete("/api/simulaciones/{simulacion_id}/metricas", status_code=204)
+    def delete_metricas(simulacion_id: int, db: Session = Depends(get_db)):
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        metrica_repo.delete_by_simulacion(db, simulacion_id)
+
+    @app.delete("/api/metricas/{metrica_id}", status_code=204)
+    def delete_metrica(metrica_id: int, db: Session = Depends(get_db)):
+        deleted = metrica_repo.delete_by_id(db, metrica_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Métrica no encontrada")
 
     return app
 

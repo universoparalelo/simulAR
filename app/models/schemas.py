@@ -13,8 +13,7 @@ class ArchivoOut(BaseModel):
     tamano_bytes: Optional[int]
     tipo: Optional[str]
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class ResultadoMetricaOut(BaseModel):
@@ -22,8 +21,7 @@ class ResultadoMetricaOut(BaseModel):
     tipo_metrica: str
     valores_tiempo_json: Optional[str]
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class SimulacionOut(BaseModel):
@@ -36,8 +34,7 @@ class SimulacionOut(BaseModel):
     archivos: List[ArchivoOut] = Field(default_factory=list)
     metricas: List[ResultadoMetricaOut] = Field(default_factory=list)
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class SimulacionCreate(BaseModel):
@@ -45,3 +42,23 @@ class SimulacionCreate(BaseModel):
     nombre: Optional[str] = None
     software: Optional[str] = None
     metadata: Optional[dict[str, Any]] = None
+
+
+class SimulacionUpdate(BaseModel):
+    nombre: Optional[str] = None
+    software: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+class MetricaCreate(BaseModel):
+    tipo_metrica: str
+    valores: Any
+
+
+class MetricaOut(BaseModel):
+    id: int
+    simulacion_id: int
+    tipo_metrica: str
+    valores_tiempo_json: Optional[str]
+
+    model_config = {"from_attributes": True}
