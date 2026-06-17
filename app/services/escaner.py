@@ -1,14 +1,19 @@
 import json
 import os
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
 from app.models.simulacion import Archivo, Simulacion
 
-TRAJECTORY_EXTS = {".nc", ".dcd", ".mdcrd", ".trr"}
-INPUT_EXTS = {".prmtop", ".top", ".inpcrd", ".pdb", ".gro"}
-OUTPUT_EXTS = {".log", ".out", ".txt", ".dat"}
+# ============================================================
+# Clasificación de extensiones
+# ============================================================
+
+TRAJECTORY_EXTS = {".nc", ".dcd", ".mdcrd", ".trr", ".xtc", ".crd"}
+INPUT_EXTS = {".prmtop", ".top", ".inpcrd", ".pdb", ".gro", ".gjf", ".inp", ".chk", ".fchk"}
+OUTPUT_EXTS = {".log", ".out", ".txt", ".dat", ".travis"}
+RESTART_EXTS = {".rst", ".rst7", ".ncrst"}
 
 
 def classify_file_extension(ext: str) -> str:
@@ -19,33 +24,165 @@ def classify_file_extension(ext: str) -> str:
         return "input"
     if ext in OUTPUT_EXTS:
         return "output"
+    if ext in RESTART_EXTS:
+        return "restart"
     return "other"
 
 
-def scan_files_in_path(path: str) -> List[dict[str, Any]]:
-    """Escanea recursivamente `path` y devuelve una lista de metadatos de archivos."""
-    result: List[dict[str, Any]] = []
+# ============================================================
+# Detección de software
+# ============================================================
+
+# Extensiones que son señal fuerte de cada software
+_AMBER_EXTS = {".prmtop", ".inpcrd", ".mdcrd", ".nc", ".rst7", ".ncrst"}
+_GAMESS_EXTS = {".inp"}   # .log es compartido, se confirma por contenido
+_GAUSSIAN_EXTS = {".gjf", ".chk", ".fchk"}
+_TRAVIS_EXTS = {".travis"}
+_GROMACS_EXTS = {".gro", ".top", ".tpr", ".xtc", ".trr", ".edr", ".ndx", ".mdp"}
+
+
+def _read_first_bytes(path: str, n: int = 512) -> str:
+    """Lee los primeros n bytes de un archivo como texto, ignorando errores."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read(n)
+    except OSError:
+        return ""
+
+
+def _detect_software_from_log(log_path: str) -> Optional[str]:
+    """Inspecciona el contenido de un .log para distinguir AMBER/GAMESS/Gaussian."""
+    header = _read_first_bytes(log_path, 1024)
+    header_low = header.lower()
+    if "gaussian" in header_low or "g16" in header_low or "g09" in header_low:
+        return "Gaussian"
+    if "gamess" in header_low:
+        return "GAMESS"
+    if "amber" in header_low or "sander" in header_low or "pmemd" in header_low:
+        return "AMBER"
+    return None
+
+
+def detect_software(files: list[dict[str, Any]]) -> Optional[str]:
+    """
+    Determina el software de simulación a partir de la lista de archivos escaneados.
+    Devuelve el nombre del software o None si no se puede determinar.
+    """
+    exts = {f["extension"].lower() for f in files if f["extension"]}
+    paths_by_ext: dict[str, list[str]] = {}
+    for f in files:
+        ext = (f["extension"] or "").lower()
+        paths_by_ext.setdefault(ext, []).append(f["ruta_completa"])
+
+    # Señales exclusivas por extensión
+    if exts & _GAUSSIAN_EXTS:
+        return "Gaussian"
+    if exts & _TRAVIS_EXTS:
+        return "Travis"
+    if exts & _AMBER_EXTS:
+        return "AMBER"
+    if exts & _GROMACS_EXTS:
+        return "GROMACS"
+
+    # .inp puede ser GAMESS o AMBER (mdin); intentamos leer el contenido
+    if ".inp" in exts:
+        for path in paths_by_ext.get(".inp", [])[:3]:
+            content = _read_first_bytes(path, 512)
+            if "gamess" in content.lower() or "$contrl" in content.lower():
+                return "GAMESS"
+            if "amber" in content.lower() or "&cntrl" in content.lower():
+                return "AMBER"
+
+    # .log puede ser de varios; inspeccionamos hasta 3 archivos
+    if ".log" in exts:
+        for path in paths_by_ext.get(".log", [])[:3]:
+            detected = _detect_software_from_log(path)
+            if detected:
+                return detected
+
+    return None
+
+
+# ============================================================
+# Validación de simulación
+# ============================================================
+
+# Una carpeta es una simulación si tiene al menos uno de estos
+_SIMULATION_SIGNALS = (
+    TRAJECTORY_EXTS
+    | _AMBER_EXTS
+    | _GAUSSIAN_EXTS
+    | _GAMESS_EXTS
+    | _TRAVIS_EXTS
+    | _GROMACS_EXTS
+    | {".log", ".out"}
+)
+
+
+def is_simulation_directory(files: list[dict[str, Any]]) -> bool:
+    """Devuelve True si la lista de archivos tiene señales de ser una simulación."""
+    if not files:
+        return False
+    exts = {f["extension"].lower() for f in files if f["extension"]}
+    return bool(exts & _SIMULATION_SIGNALS)
+
+
+# ============================================================
+# Escaneo de archivos
+# ============================================================
+
+def scan_files_in_path(path: str) -> list[dict[str, Any]]:
+    """Escanea recursivamente `path` y devuelve metadatos de cada archivo."""
+    result: list[dict[str, Any]] = []
     for root, _, files in os.walk(path):
         for fname in files:
             full = os.path.join(root, fname)
             try:
-                size = os.path.getsize(full)
+                stat = os.stat(full)
+                size = stat.st_size
+                mtime = stat.st_mtime
             except OSError:
                 size = None
+                mtime = None
             _, ext = os.path.splitext(fname)
             tipo = classify_file_extension(ext)
             rel_path = os.path.relpath(full, path)
             result.append(
                 {
                     "nombre_archivo": rel_path,
-                    "extension": ext.lower(),
+                    "extension": ext.lower() if ext else "",
                     "tamano_bytes": size,
+                    "mtime": mtime,
                     "tipo": tipo,
                     "ruta_completa": full,
                 }
             )
     return result
 
+
+def build_metadata(path: str, files: list[dict[str, Any]], software: Optional[str]) -> dict[str, Any]:
+    """Construye el diccionario de metadata enriquecida para una simulación."""
+    by_type: dict[str, int] = {}
+    total_bytes = 0
+    for f in files:
+        by_type[f["tipo"]] = by_type.get(f["tipo"], 0) + 1
+        total_bytes += f["tamano_bytes"] or 0
+
+    mtimes = [f["mtime"] for f in files if f["mtime"] is not None]
+
+    return {
+        "software_detectado": software,
+        "total_archivos": len(files),
+        "total_bytes": total_bytes,
+        "archivos_por_tipo": by_type,
+        "fecha_modificacion_mas_reciente": max(mtimes) if mtimes else None,
+        "fecha_modificacion_mas_antigua": min(mtimes) if mtimes else None,
+    }
+
+
+# ============================================================
+# Registro de simulaciones
+# ============================================================
 
 def register_simulation(
     db: Session,
@@ -54,10 +191,11 @@ def register_simulation(
     software: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
 ) -> Simulacion:
-    """Registra una simulacion en la DB leyendo la carpeta `ruta_absoluta`.
-
+    """
+    Registra una simulación en la DB leyendo la carpeta `ruta_absoluta`.
     - Si la ruta ya fue registrada, devuelve el registro existente.
-    - Añade todos los archivos detectados a la tabla `Archivo`.
+    - Detecta el software automáticamente si no se proporciona.
+    - Construye metadata enriquecida si no se proporciona.
     """
     ruta_absoluta = os.path.abspath(ruta_absoluta)
     if not os.path.exists(ruta_absoluta):
@@ -68,41 +206,104 @@ def register_simulation(
         return existing
 
     nombre = nombre or os.path.basename(ruta_absoluta.rstrip(os.sep)) or ruta_absoluta
+    files = scan_files_in_path(ruta_absoluta)
 
-    # Construimos simulación; si metadata está presente, la serializamos y la pasamos al constructor
-    metadata_json = None
-    if metadata is not None:
-        try:
-            metadata_json = json.dumps(metadata)
-        except Exception:
-            metadata_json = None
+    # Detectar software si no fue provisto
+    if software is None:
+        software = detect_software(files)
+
+    # Construir metadata si no fue provista
+    if metadata is None:
+        metadata = build_metadata(ruta_absoluta, files, software)
 
     sim = Simulacion(
         nombre=nombre,
         ruta_absoluta=ruta_absoluta,
         software=software,
-        metadata_json=metadata_json,
+        metadata_json=json.dumps(metadata),
     )
-
     db.add(sim)
-    db.flush()  # obtener id antes de agregar archivos
-
-    files = scan_files_in_path(ruta_absoluta)
+    db.flush()
 
     for f in files:
-        archivo = Archivo(
+        db.add(Archivo(
             nombre_archivo=f["nombre_archivo"],
             extension=f["extension"],
             tamano_bytes=f["tamano_bytes"],
             tipo=f["tipo"],
             simulacion_id=sim.id,
-        )
-        db.add(archivo)
+        ))
 
     db.commit()
     db.refresh(sim)
     return sim
 
 
-def list_simulations(db: Session) -> List[Simulacion]:
+def scan_directory_for_simulations(
+    db: Session,
+    ruta_raiz: str,
+    registrar: bool = True,
+) -> list[dict[str, Any]]:
+    """
+    Escanea una carpeta raíz buscando subcarpetas que parezcan simulaciones.
+
+    - Cada subcarpeta directa se analiza como posible simulación.
+    - Si `registrar=True`, las que pasan la validación se registran en la DB.
+    - Devuelve una lista con el resultado de cada subcarpeta analizada.
+    """
+    ruta_raiz = os.path.abspath(ruta_raiz)
+    if not os.path.isdir(ruta_raiz):
+        raise FileNotFoundError(f"La ruta no existe o no es un directorio: {ruta_raiz}")
+
+    resultados = []
+
+    try:
+        entries = [
+            e for e in os.scandir(ruta_raiz)
+            if e.is_dir(follow_symlinks=False)
+        ]
+    except PermissionError as exc:
+        raise PermissionError(f"Sin permiso para leer: {ruta_raiz}") from exc
+
+    for entry in sorted(entries, key=lambda e: e.name):
+        files = scan_files_in_path(entry.path)
+        es_sim = is_simulation_directory(files)
+        software = detect_software(files) if es_sim else None
+        metadata = build_metadata(entry.path, files, software) if es_sim else None
+
+        resultado: dict[str, Any] = {
+            "ruta": entry.path,
+            "nombre": entry.name,
+            "es_simulacion": es_sim,
+            "software_detectado": software,
+            "total_archivos": len(files),
+            "simulacion_id": None,
+            "ya_registrada": False,
+            "error": None,
+        }
+
+        if es_sim and registrar:
+            try:
+                existing = db.query(Simulacion).filter_by(ruta_absoluta=entry.path).first()
+                if existing:
+                    resultado["ya_registrada"] = True
+                    resultado["simulacion_id"] = existing.id
+                else:
+                    sim = register_simulation(
+                        db,
+                        entry.path,
+                        nombre=entry.name,
+                        software=software,
+                        metadata=metadata,
+                    )
+                    resultado["simulacion_id"] = sim.id
+            except Exception as exc:
+                resultado["error"] = str(exc)
+
+        resultados.append(resultado)
+
+    return resultados
+
+
+def list_simulations(db: Session) -> list[Simulacion]:
     return db.query(Simulacion).order_by(Simulacion.fecha_registro.desc()).all()

@@ -4,6 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Dashboard</title>
+        <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
 
         <!-- CSS del dashboard -->
         <link
@@ -25,7 +26,11 @@
             <div class="header">
                 <div class="header-left">
                     <div class="header-logo">
-                        <i class="ti ti-atom-2"></i>
+                        <img
+                            src="{{ url_for('static', path='UTN_logo.jpg') }}"
+                            alt="UTN"
+                            class="header-logo-img"
+                        />
                     </div>
                     <h1 class="header-title">QuITEx Simulation Manager</h1>
                 </div>
@@ -633,7 +638,7 @@
 
                 const previousButton = document.createElement("button");
                 previousButton.className = "pagination-button";
-                previousButton.innerHTML = '<i class="ti ti-chevron-left"></i>';
+                previousButton.innerHTML = '&#8249;';
                 previousButton.disabled = currentPage === 1;
                 previousButton.addEventListener("click", previousPage);
                 paginationButtons.appendChild(previousButton);
@@ -651,7 +656,7 @@
 
                 const nextButton = document.createElement("button");
                 nextButton.className = "pagination-button";
-                nextButton.innerHTML = '<i class="ti ti-chevron-right"></i>';
+                nextButton.innerHTML = '&#8250;';
                 nextButton.disabled = currentPage === totalPages;
                 nextButton.addEventListener("click", nextPage);
                 paginationButtons.appendChild(nextButton);

@@ -44,6 +44,22 @@ class SimulacionCreate(BaseModel):
     metadata: Optional[dict[str, Any]] = None
 
 
+class ScanDirectoryRequest(BaseModel):
+    ruta_absoluta: str
+    registrar: bool = True
+
+
+class ScanDirectoryResult(BaseModel):
+    ruta: str
+    nombre: str
+    es_simulacion: bool
+    software_detectado: Optional[str]
+    total_archivos: int
+    simulacion_id: Optional[int]
+    ya_registrada: bool
+    error: Optional[str]
+
+
 class SimulacionUpdate(BaseModel):
     nombre: Optional[str] = None
     software: Optional[str] = None

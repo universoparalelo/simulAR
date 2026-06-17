@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "simulAR",
+      "runtimeExecutable": "C:\\Users\\celeb\\simulAR\\.venv\\Scripts\\uvicorn.exe",
+      "runtimeArgs": ["app.main:app", "--reload"],
+      "port": 8000,
+      "autoPort": true
+    }
+  ]
+}

@@ -2,6 +2,8 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+from fastapi.responses import FileResponse
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,12 +14,21 @@ from app.database import get_db, init_db
 from app.models.schemas import (
     MetricaCreate,
     MetricaOut,
+    ScanDirectoryRequest,
+    ScanDirectoryResult,
     SimulacionCreate,
     SimulacionOut,
     SimulacionUpdate,
 )
 from app.repositories import archivo_repo, metrica_repo, simulacion_repo
-from app.services.escaner import list_simulations, register_simulation
+from app.services.escaner import (
+    build_metadata,
+    detect_software,
+    list_simulations,
+    register_simulation,
+    scan_directory_for_simulations,
+    scan_files_in_path,
+)
 
 
 def format_bytes(size: int) -> str:
@@ -48,6 +59,10 @@ def create_app():
             # Si la importación falla, init_db() aún intentará crear las tablas
             pass
         init_db()
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        return FileResponse("app/static/UTN_logo.jpg", media_type="image/jpeg")
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request, db: Session = Depends(get_db)):
@@ -176,6 +191,58 @@ def create_app():
             raise HTTPException(status_code=500, detail=str(exc))
 
         return sim
+
+    @app.post("/api/simulaciones/{simulacion_id}/rescan", response_model=SimulacionOut)
+    def rescan_simulation(simulacion_id: int, db: Session = Depends(get_db)):
+        """Re-escanea la carpeta de una simulación existente: actualiza software,
+        metadata y sincroniza la lista de archivos."""
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        import os
+        if not os.path.exists(sim.ruta_absoluta):
+            raise HTTPException(status_code=404, detail=f"La ruta ya no existe: {sim.ruta_absoluta}")
+
+        files = scan_files_in_path(sim.ruta_absoluta)
+        software = detect_software(files)
+        metadata = build_metadata(sim.ruta_absoluta, files, software)
+
+        sim.software = software
+        import json
+        sim.metadata_json = json.dumps(metadata)
+
+        # Sincronizar archivos: borrar los anteriores y re-agregar
+        from app.models.simulacion import Archivo
+        db.query(Archivo).filter(Archivo.simulacion_id == sim.id).delete()
+        for f in files:
+            db.add(Archivo(
+                nombre_archivo=f["nombre_archivo"],
+                extension=f["extension"],
+                tamano_bytes=f["tamano_bytes"],
+                tipo=f["tipo"],
+                simulacion_id=sim.id,
+            ))
+
+        db.commit()
+        db.refresh(sim)
+        return sim
+
+    @app.post("/api/escanear", response_model=List[ScanDirectoryResult])
+    def scan_directory(payload: ScanDirectoryRequest, db: Session = Depends(get_db)):
+        """Escanea una carpeta raíz buscando subcarpetas que sean simulaciones.
+        Si `registrar=true`, las que detecte las guarda en la DB automáticamente.
+        """
+        try:
+            resultados = scan_directory_for_simulations(
+                db, payload.ruta_absoluta, registrar=payload.registrar
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+        return resultados
 
     @app.get("/api/simulaciones", response_model=List[SimulacionOut])
     def get_simulations(db: Session = Depends(get_db)):

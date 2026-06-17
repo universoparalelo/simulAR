@@ -1,0 +1,10 @@
+Minimización de prueba para generar datos
+ &cntrl
+  imin=1,       ! Activa la minimización
+  maxcyc=100,   ! Máximo de 100 pasos de cálculo
+  ncyc=50,      ! 50 pasos con descenso más pronunciado
+  ntb=0,        ! Sin condiciones periódicas (en vacío)
+  igb=0,        ! Sin solvente implícito
+  cut=999.0,    ! CORRECCIÓN: Corte infinito para evitar el error en vacío
+  ntpr=10,      ! Escribe en el log cada 10 pasos
+ /

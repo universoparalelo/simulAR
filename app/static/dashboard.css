@@ -103,15 +103,21 @@ body.modal-open {
 }
 
 .header-logo {
-    width: 44px;
-    height: 44px;
-    background-color: var(--color-background-info);
+    width: 36px;
+    height: 36px;
     border-radius: var(--border-radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
-    color: var(--color-text-info);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.header-logo-img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    display: block;
 }
 
 .header-title {
@@ -669,6 +675,11 @@ body.modal-open {
 }
 
 .pagination-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    min-height: 34px;
     padding: var(--spacing-sm) var(--spacing-md);
     border: 0.5px solid var(--color-border-tertiary);
     background-color: var(--color-background-primary);
@@ -696,7 +707,15 @@ body.modal-open {
 }
 
 .pagination-button i {
-    font-size: 14px;
+    font-size: 16px;
+    line-height: 1;
+    display: block;
+}
+
+.pagination-button:first-child,
+.pagination-button:last-child {
+    font-size: 20px;
+    line-height: 1;
 }
 
 .empty-state {

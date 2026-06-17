@@ -1,0 +1,4 @@
+source leaprc.protein.ff14SB
+pep = sequence { ALA ALA ALA }
+saveamberparm pep sistema.prmtop sistema.inpcrd
+quit
