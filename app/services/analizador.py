@@ -161,6 +161,55 @@ def _save_metrica(
 
 
 # ---------------------------------------------------------------------------
+# Parser de archivos de salida de minimización AMBER
+# ---------------------------------------------------------------------------
+
+def parsear_energia_minimizacion(out_path: str) -> dict[str, Any]:
+    """Extrae la curva de energía de un archivo .out de minimización AMBER (sander/pmemd).
+
+    Devuelve:
+        {
+            "pasos": [...],
+            "energia_kcal_mol": [...],
+            "rms_gradiente": [...]
+        }
+    """
+    import re
+
+    pattern = re.compile(
+        r"^\s+(\d+)\s+([\-\d\.E+]+)\s+([\-\d\.E+]+)", re.MULTILINE
+    )
+
+    pasos, energias, rms_vals = [], [], []
+    try:
+        with open(out_path, encoding="utf-8", errors="ignore") as f:
+            contenido = f.read()
+        for match in pattern.finditer(contenido):
+            pasos.append(int(match.group(1)))
+            energias.append(float(match.group(2)))
+            rms_vals.append(float(match.group(3)))
+    except OSError:
+        pass
+
+    return {
+        "pasos": pasos,
+        "energia_kcal_mol": energias,
+        "rms_gradiente": rms_vals,
+    }
+
+
+def calcular_propiedades_estaticas(universe: "mda.Universe") -> dict[str, Any]:
+    """Calcula propiedades estáticas de una estructura (sin trayectoria)."""
+    atoms = universe.select_atoms("all")
+    return {
+        "n_atomos": len(atoms),
+        "n_residuos": len(universe.residues),
+        "rg_angstrom": float(atoms.radius_of_gyration()),
+        "masa_total_uma": float(atoms.total_mass()),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Función principal de análisis
 # ---------------------------------------------------------------------------
 
@@ -203,66 +252,135 @@ def analizar_simulacion(
 
     archivos: list[Archivo] = sim.archivos
 
-    # Localizar topología y trayectorias
+    # Localizar archivos
     topologia_rel = _find_topology(archivos)
     trayectorias_rel = _find_trajectories(archivos)
+    out_files = [
+        a.nombre_archivo for a in archivos
+        if (a.extension or "").lower() == ".out"
+    ]
 
     if topologia_rel is None:
         raise ValueError(
             "No se encontró archivo de topología compatible "
-            "(.prmtop, .pdb, .gro, .top, .psf). "
-            "Verificá que la simulación tenga los archivos correctos."
-        )
-
-    if not trayectorias_rel:
-        raise ValueError(
-            "No se encontraron archivos de trayectoria "
-            "(.nc, .mdcrd, .dcd, .trr, .xtc). "
-            "Verificá que la simulación tenga archivos de trayectoria."
+            "(.prmtop, .pdb, .gro, .top, .psf)."
         )
 
     topologia = os.path.join(sim.ruta_absoluta, topologia_rel)
+
+    # Detectar modo: con trayectoria (MD) o sin ella (minimización / estructura estática)
+    tiene_trayectoria = bool(trayectorias_rel)
     trayectorias = [os.path.join(sim.ruta_absoluta, r) for r in trayectorias_rel]
 
-    # Cargar universo MDAnalysis
-    universe = mda.Universe(topologia, *trayectorias)
+    # Formatos explícitos por extensión para MDAnalysis
+    _MDA_FORMAT: dict[str, str] = {
+        ".inpcrd": "INPCRD",
+        ".rst": "RESTRT",
+        ".rst7": "RESTRT",
+        ".ncrst": "RESTRT",
+        ".gro": "GRO",
+    }
+
+    if tiene_trayectoria:
+        universe = mda.Universe(topologia, *trayectorias)
+    else:
+        # Preferir inpcrd > rst7/ncrst > rst > gro (orden de confiabilidad)
+        coord_priority = [".inpcrd", ".rst7", ".ncrst", ".rst", ".gro"]
+        coord_rel = None
+        for ext in coord_priority:
+            match = next(
+                (a.nombre_archivo for a in archivos if (a.extension or "").lower() == ext),
+                None,
+            )
+            if match:
+                coord_rel = match
+                coord_fmt = _MDA_FORMAT[ext]
+                break
+
+        if coord_rel:
+            universe = mda.Universe(
+                topologia,
+                os.path.join(sim.ruta_absoluta, coord_rel),
+                format=coord_fmt,
+            )
+        else:
+            universe = mda.Universe(topologia)
 
     n_frames = len(universe.trajectory)
     n_atomos = len(universe.atoms)
 
     resultados: dict[str, Any] = {
         "simulacion_id": simulacion_id,
+        "modo": "dinamica" if tiene_trayectoria else "minimizacion_o_estatico",
         "n_frames": n_frames,
         "n_atomos": n_atomos,
         "topologia_usada": topologia_rel,
         "trayectorias_usadas": trayectorias_rel,
         "metricas_calculadas": [],
         "errores": [],
+        "advertencias": [],
     }
 
-    # Calcular métricas solicitadas
-    if "rmsd" in metricas:
+    if not tiene_trayectoria:
+        resultados["advertencias"].append(
+            "No se encontró trayectoria (.nc, .mdcrd, .xtc). "
+            "RMSD y Rg temporal no están disponibles. "
+            "Se calcularon propiedades estáticas y energía de minimización."
+        )
+
+    # --- Propiedades estáticas (siempre disponibles) ---
+    try:
+        props = calcular_propiedades_estaticas(universe)
+        _save_metrica(db, simulacion_id, "propiedades_estaticas", props)
+        resultados["metricas_calculadas"].append("propiedades_estaticas")
+        resultados["propiedades_estaticas"] = props
+    except Exception as exc:
+        resultados["errores"].append(f"Propiedades estáticas: {exc}")
+
+    # --- Energía de minimización (solo si hay .out y no hay trayectoria) ---
+    if not tiene_trayectoria and out_files:
+        try:
+            out_path = os.path.join(sim.ruta_absoluta, out_files[0])
+            energia_data = parsear_energia_minimizacion(out_path)
+            if energia_data["pasos"]:
+                _save_metrica(db, simulacion_id, "energia_minimizacion", energia_data)
+                resultados["metricas_calculadas"].append("energia_minimizacion")
+                energias = energia_data["energia_kcal_mol"]
+                resultados["energia_resumen"] = {
+                    "n_pasos": len(energias),
+                    "energia_inicial_kcal_mol": energias[0],
+                    "energia_final_kcal_mol": energias[-1],
+                    "reduccion_kcal_mol": energias[0] - energias[-1],
+                }
+        except Exception as exc:
+            resultados["errores"].append(f"Energía minimización: {exc}")
+
+    # --- RMSD (solo con trayectoria) ---
+    if tiene_trayectoria and "rmsd" in metricas:
         try:
             rmsd_data = calcular_rmsd(universe)
             _save_metrica(db, simulacion_id, "rmsd", rmsd_data)
             resultados["metricas_calculadas"].append("rmsd")
+            vals = rmsd_data["rmsd_angstrom"]
             resultados["rmsd_resumen"] = {
-                "min": min(rmsd_data["rmsd_angstrom"]),
-                "max": max(rmsd_data["rmsd_angstrom"]),
-                "promedio": sum(rmsd_data["rmsd_angstrom"]) / len(rmsd_data["rmsd_angstrom"]),
+                "min": min(vals),
+                "max": max(vals),
+                "promedio": sum(vals) / len(vals),
             }
         except Exception as exc:
             resultados["errores"].append(f"RMSD: {exc}")
 
-    if "rg" in metricas:
+    # --- Radio de giro temporal (solo con trayectoria) ---
+    if tiene_trayectoria and "rg" in metricas:
         try:
             rg_data = calcular_radio_de_giro(universe)
             _save_metrica(db, simulacion_id, "rg", rg_data)
             resultados["metricas_calculadas"].append("rg")
+            vals = rg_data["rg_angstrom"]
             resultados["rg_resumen"] = {
-                "min": min(rg_data["rg_angstrom"]),
-                "max": max(rg_data["rg_angstrom"]),
-                "promedio": sum(rg_data["rg_angstrom"]) / len(rg_data["rg_angstrom"]),
+                "min": min(vals),
+                "max": max(vals),
+                "promedio": sum(vals) / len(vals),
             }
         except Exception as exc:
             resultados["errores"].append(f"Radio de giro: {exc}")
