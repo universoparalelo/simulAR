@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +19,7 @@ class ArchivoOut(BaseModel):
 class ResultadoMetricaOut(BaseModel):
     id: int
     tipo_metrica: str
-    valores_tiempo_json: Optional[str]
+    valores_tiempo_json: Optional[Union[Dict[str, Any], List[Any]]]
 
     model_config = {"from_attributes": True}
 
@@ -79,6 +79,6 @@ class MetricaOut(BaseModel):
     id: int
     simulacion_id: int
     tipo_metrica: str
-    valores_tiempo_json: Optional[str]
+    valores_tiempo_json: Optional[Union[Dict[str, Any], List[Any]]]
 
     model_config = {"from_attributes": True}

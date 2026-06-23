@@ -1,4 +1,3 @@
-import json
 from typing import Any, List, Optional
 
 from sqlalchemy.orm import Session
@@ -19,7 +18,7 @@ def create(
     metrica = ResultadoMetrica(
         simulacion_id=simulacion_id,
         tipo_metrica=tipo_metrica,
-        valores_tiempo_json=json.dumps(valores),
+        valores_tiempo_json=valores,
     )
     db.add(metrica)
     db.commit()

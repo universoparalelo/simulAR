@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -12,9 +12,7 @@ class ResultadoMetrica(Base):
     id = Column(Integer, primary_key=True, index=True)
     simulacion_id = Column(Integer, ForeignKey("simulaciones.id"), nullable=False)
     tipo_metrica = Column(String(100), nullable=False, index=True)
-    valores_tiempo_json = Column(
-        Text, nullable=True
-    )  # Guardamos el vector como JSON serializado
+    valores_tiempo_json = Column(JSON, nullable=True)
 
     simulacion = relationship("Simulacion", back_populates="metricas")
 
