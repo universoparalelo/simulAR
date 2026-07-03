@@ -259,7 +259,7 @@
                 <li class="task"><input type="checkbox" id="e1-3"><label for="e1-3">Entidades Simulacion, Archivo y Resultado_Metrica creadas con SQLAlchemy<span class="note">app/models/simulacion.py, app/models/metrica.py</span></label></li>
                 <li class="task"><input type="checkbox" id="e1-4"><label for="e1-4">Columnas JSON genéricas (metadata_json, valores_tiempo_json) compatibles con SQLite/Postgres</label></li>
                 <li class="task"><input type="checkbox" id="e1-5"><label for="e1-5">Cadena de conexión dinámica vía variable de entorno DATABASE_URL (default sqlite:///./simular_local.db)</label></li>
-                <li class="task"><input type="checkbox" id="e1-6"><label for="e1-6">Migrar modelos al tipado moderno <code>Mapped[...]</code> / <code>mapped_column()</code> de SQLAlchemy 2.0<span class="note">Actualmente los modelos usan Column() clásico, no el mapeo declarativo moderno recomendado en el documento</span><span class="badge pending">pendiente</span></label></li>
+                <li class="task"><input type="checkbox" id="e1-6"><label for="e1-6">Migrar modelos al tipado moderno <code>Mapped[...]</code> / <code>mapped_column()</code> de SQLAlchemy 2.0<span class="note">app/models/simulacion.py y app/models/metrica.py migrados; round-trip verificado (columna JSON, relaciones, cascade delete)</span></label></li>
             </ul>
         </div>
     </section>
@@ -282,7 +282,7 @@
         <div class="phase">
             <h3>Fase 2.2 — Módulo 2: Pipeline de Extracción Analítica</h3>
             <ul class="task-list">
-                <li class="task"><input type="checkbox" id="e2-4"><label for="e2-4">Background Tasks de FastAPI para no bloquear la app durante el análisis<span class="note">El endpoint POST /api/simulaciones/{id}/analizar corre síncrono; no se encontró uso de BackgroundTasks en main.py</span><span class="badge pending">pendiente</span></label></li>
+                <li class="task"><input type="checkbox" id="e2-4"><label for="e2-4">Background Tasks de FastAPI para no bloquear la app durante el análisis<span class="note">POST /api/simulaciones/{id}/analizar ahora encola con BackgroundTasks y responde 202 de inmediato; estado_analisis/analisis_error en Simulacion se consultan vía GET. Verificado end-to-end con datos reales.</span></label></li>
                 <li class="task"><input type="checkbox" id="e2-5"><label for="e2-5">Uso de subprocess para automatizar cpptraj sobre trayectorias<span class="note">analizador.py: _run_cpptraj()</span></label></li>
                 <li class="task"><input type="checkbox" id="e2-6"><label for="e2-6">Scripts de cálculo de RMSD y Radio de Giro (vía cpptraj y fallback con MDAnalysis puro)</label></li>
             </ul>
@@ -367,8 +367,8 @@
     // (ver commits: "crud creado", "modulo de escaneo...", "pipeline de procesamiento", "primer etapa completada")
     const defaultChecked = [
         'doc-1', 'doc-2', 'doc-3', 'doc-4',
-        'e1-1', 'e1-2', 'e1-3', 'e1-4', 'e1-5',
-        'e2-1', 'e2-2', 'e2-3', 'e2-5', 'e2-6', 'e2-7', 'e2-8', 'e2-9',
+        'e1-1', 'e1-2', 'e1-3', 'e1-4', 'e1-5', 'e1-6',
+        'e2-1', 'e2-2', 'e2-3', 'e2-4', 'e2-5', 'e2-6', 'e2-7', 'e2-8', 'e2-9',
         'e3-1', 'e3-3'
     ];
 

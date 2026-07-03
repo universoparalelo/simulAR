@@ -57,15 +57,20 @@ app/
 
 1. El usuario indica una carpeta → `POST /api/simulaciones/import` o `/api/escanear`
 2. `escaner.py` recorre el directorio con `os.walk`, clasifica archivos por extensión, detecta el software (AMBER/GAMESS/Gaussian/GROMACS) inspeccionando extensiones y primeras líneas de los `.log`/`.inp`, y guarda en las tablas `Simulacion` y `Archivo`
-3. El usuario dispara análisis → `POST /api/simulaciones/{id}/analizar`
-4. `analizador.py` localiza topología e coordenadas, carga un `mda.Universe`, calcula RMSD y radio de giro (con trayectoria .nc) o propiedades estáticas + energía de minimización (sin trayectoria), y persiste en `ResultadoMetrica` como JSON
-5. El detalle (`/simulaciones/{id}`) hace fetch a `/api/simulaciones/{id}` y `/api/simulaciones/{id}/archivos` para renderizar con datos reales
+3. El usuario dispara análisis → `POST /api/simulaciones/{id}/analizar`. El endpoint marca `estado_analisis="procesando"` y encola el trabajo con `BackgroundTasks`, respondiendo `202` de inmediato sin esperar a que termine
+4. En background, `analizar_simulacion_background` (en `analizador.py`) abre su propia sesión de DB (`SessionLocal`, no la del request), localiza topología e coordenadas, carga un `mda.Universe`, calcula RMSD y radio de giro (con trayectoria .nc) o propiedades estáticas + energía de minimización (sin trayectoria), persiste en `ResultadoMetrica` como JSON, y al final actualiza `Simulacion.estado_analisis` a `completado` o `error` (con el detalle en `analisis_error`)
+5. El detalle (`/simulaciones/{id}`) hace fetch a `/api/simulaciones/{id}` y `/api/simulaciones/{id}/archivos` para renderizar con datos reales; `estado_analisis`/`analisis_error` viajan en ese mismo GET para hacer polling del progreso (el polling en el frontend todavía no está implementado, es trabajo de la Etapa 3)
 
 ## Modelo de datos
 
 - `Simulacion`: una carpeta de simulación registrada. Tiene `metadata_json` con `total_bytes`, `archivos_por_tipo`, `fecha_modificacion_mas_reciente`, etc.
 - `Archivo`: cada archivo dentro de la carpeta. `nombre_archivo` es ruta **relativa** a `ruta_absoluta`. El path completo es `os.path.join(sim.ruta_absoluta, archivo.nombre_archivo)`.
 - `ResultadoMetrica`: resultados de análisis serializados como JSON en `valores_tiempo_json`. Tipos posibles: `rmsd`, `rg`, `propiedades_estaticas`, `energia_minimizacion`.
+- `Simulacion.estado_analisis`: `pendiente` (default) | `procesando` | `completado` | `error`. `Simulacion.analisis_error` guarda el mensaje si falló.
+
+## Seguimiento del plan de trabajo
+
+Al terminar una tarea de desarrollo, revisar `docs/plan_trabajo.html` y, si la tarea recién completada corresponde a un ítem de ese checklist, marcarlo agregando su `id` al array `defaultChecked` dentro del `<script>` del archivo.
 
 ## Convenciones importantes
 
@@ -102,7 +107,7 @@ import app.models.metrica
 | PUT | `/api/simulaciones/{id}` | Actualiza nombre/software/metadata |
 | DELETE | `/api/simulaciones/{id}` | Elimina (cascade a archivos y métricas) |
 | POST | `/api/simulaciones/{id}/rescan` | Re-escanea carpeta y actualiza software/metadata/archivos |
-| POST | `/api/simulaciones/{id}/analizar` | Ejecuta pipeline MDAnalysis y guarda métricas |
+| POST | `/api/simulaciones/{id}/analizar` | Encola pipeline MDAnalysis en background (202 inmediato); progreso vía `estado_analisis` en GET |
 | GET | `/api/simulaciones/{id}/metricas` | Lista métricas calculadas |
 | DELETE | `/api/simulaciones/{id}/metricas` | Borra todas las métricas |
 
@@ -115,7 +120,6 @@ import app.models.metrica
 
 ## Próximos pasos planificados
 
-- Visualización de métricas con Chart.js o Plotly en `detalle.html`
-- Background Tasks de FastAPI para análisis de archivos pesados sin timeout
+- Visualización de métricas con Chart.js o Plotly en `detalle.html`, incluyendo polling de `estado_analisis` mientras el análisis está `procesando`
 - Módulo de optimización de almacenamiento (identificar archivos redundantes/eliminables)
 - Migración a PostgreSQL/Supabase para producción (solo cambiar `DATABASE_URL`)
