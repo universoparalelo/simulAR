@@ -68,6 +68,10 @@ app/
 - `ResultadoMetrica`: resultados de análisis serializados como JSON en `valores_tiempo_json`. Tipos posibles: `rmsd`, `rg`, `propiedades_estaticas`, `energia_minimizacion`.
 - `Simulacion.estado_analisis`: `pendiente` (default) | `procesando` | `completado` | `error`. `Simulacion.analisis_error` guarda el mensaje si falló.
 
+## Decisiones técnicas
+
+**CSS propio en vez de Tailwind CSS**: `app/static/dashboard.css` está escrito a mano (con variables CSS para colores/espaciado/tipografía) en lugar de usar Tailwind, aunque el documento de planificación original (`docs/Etapa1.md`) proponía Tailwind. Es una decisión consciente, no una desviación accidental: Tailwind agregaría una dependencia de build tooling (Node, PostCSS/CLI) a un proyecto que hoy es 100% Python y corre local en la máquina del laboratorio; la superficie de UI es chica (dos vistas, `dashboard.html` y `detalle.html`); y no hay ningún impacto para el usuario final — el navegador recibe CSS compilado en ambos casos, con renderizado y performance equivalentes. El costo de migrar ~1100 líneas de CSS ya funcional no se justifica frente a trabajo pendiente de mayor valor (graficación, migración a Supabase). Si en el futuro el equipo crece o la UI se vuelve mucho más compleja, reevaluar.
+
 ## Seguimiento del plan de trabajo
 
 Al terminar una tarea de desarrollo, revisar `docs/plan_trabajo.html` y, si la tarea recién completada corresponde a un ítem de ese checklist, marcarlo agregando su `id` al array `defaultChecked` dentro del `<script>` del archivo.
