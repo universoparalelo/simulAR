@@ -59,7 +59,7 @@ app/
 2. `escaner.py` recorre el directorio con `os.walk`, clasifica archivos por extensión, detecta el software (AMBER/GAMESS/Gaussian/GROMACS) inspeccionando extensiones y primeras líneas de los `.log`/`.inp`, y guarda en las tablas `Simulacion` y `Archivo`
 3. El usuario dispara análisis → `POST /api/simulaciones/{id}/analizar`. El endpoint marca `estado_analisis="procesando"` y encola el trabajo con `BackgroundTasks`, respondiendo `202` de inmediato sin esperar a que termine
 4. En background, `analizar_simulacion_background` (en `analizador.py`) abre su propia sesión de DB (`SessionLocal`, no la del request), localiza topología e coordenadas, carga un `mda.Universe`, calcula RMSD y radio de giro (con trayectoria .nc) o propiedades estáticas + energía de minimización (sin trayectoria), persiste en `ResultadoMetrica` como JSON, y al final actualiza `Simulacion.estado_analisis` a `completado` o `error` (con el detalle en `analisis_error`)
-5. El detalle (`/simulaciones/{id}`) hace fetch a `/api/simulaciones/{id}` y `/api/simulaciones/{id}/archivos` para renderizar con datos reales; `estado_analisis`/`analisis_error` viajan en ese mismo GET para hacer polling del progreso (el polling en el frontend todavía no está implementado, es trabajo de la Etapa 3)
+5. El detalle (`/simulaciones/{id}`) hace fetch a `/api/simulaciones/{id}` y `/api/simulaciones/{id}/archivos` para renderizar con datos reales. El botón "Analizar" dispara el paso 3; mientras `estado_analisis === "procesando"`, un `setInterval` de 3s vuelve a pedir `GET /api/simulaciones/{id}` hasta que cambia a `completado`/`error`, y entonces `renderMetricas()` dibuja los gráficos de línea (Chart.js) con los datos ya en `sim.metricas`
 
 ## Modelo de datos
 
@@ -86,7 +86,11 @@ import app.models.metrica
 
 **Pydantic v2**: los schemas usan `model_config = {"from_attributes": True}` en lugar del antiguo `class Config: orm_mode = True`.
 
-**Cache busting**: el CSS en `dashboard.html` lleva `?v=upload-preview-modal-3` y en `detalle.html` lleva `?v=2`. Incrementar el número al modificar `dashboard.css` para forzar recarga en el navegador.
+**Cache busting**: el CSS en `dashboard.html` lleva `?v=upload-preview-modal-3` y en `detalle.html` lleva `?v=3`. Incrementar el número al modificar `dashboard.css` para forzar recarga en el navegador.
+
+**`metadata_json` ya es un dict, no un string**: desde la migración a columna JSON nativa, `sim.metadata_json` viaja como objeto en las respuestas de la API. No usar `JSON.parse()` sobre él en el frontend (había un bug así en `detalle.html` que dejaba `meta = {}` siempre, ya corregido).
+
+**Gráficos en Chart.js con eje X numérico**: pasar los puntos como `{x, y}` en el dataset (no `labels` + `data` separados) y usar `scales.x.type = 'linear'`; si no, Chart.js trata el eje X como categorías de texto y muestra los `tiempos_ps` completos (con todos los decimales) como labels.
 
 **Archivos de coordenadas AMBER**: MDAnalysis no reconoce `.rst` automáticamente. Hay que pasar `format="RESTRT"` explícitamente. `.inpcrd` se carga como `format="INPCRD"`.
 
@@ -97,7 +101,8 @@ import app.models.metrica
 | MDAnalysis 2.x | Lectura de topologías y trayectorias (AMBER, GROMACS, CHARMM) |
 | NumPy | Arrays de coordenadas y métricas |
 | SciPy | Análisis estadístico |
-| Matplotlib | Generación de gráficos (no usado en UI aún, disponible para backend) |
+| Matplotlib | Generación de gráficos (no usado en UI, disponible para backend) |
+| Chart.js 4 (CDN) | Gráficos de línea de RMSD/Rg/energía en `detalle.html`, sin build tooling |
 
 ## API REST — endpoints principales
 
@@ -124,6 +129,5 @@ import app.models.metrica
 
 ## Próximos pasos planificados
 
-- Visualización de métricas con Chart.js o Plotly en `detalle.html`, incluyendo polling de `estado_analisis` mientras el análisis está `procesando`
 - Módulo de optimización de almacenamiento (identificar archivos redundantes/eliminables)
 - Migración a PostgreSQL/Supabase para producción (solo cambiar `DATABASE_URL`)
