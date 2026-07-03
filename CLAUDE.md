@@ -26,7 +26,7 @@ uvicorn app.main:app --reload
 
 El servidor queda disponible en `http://127.0.0.1:8000`. La documentación Swagger se genera automáticamente en `/docs`.
 
-La base de datos SQLite se crea automáticamente en `simular_local.db` al primer arranque. Para cambiarla a PostgreSQL (producción), setear la variable de entorno `DATABASE_URL`.
+La base de datos SQLite se crea automáticamente en `simular_local.db` al primer arranque. Para cambiarla a PostgreSQL/Supabase (producción), copiar `.env.example` a `.env` y completar `DATABASE_URL` con el connection string real (ver "Migración a Supabase" más abajo). `.env` no se versiona (`.gitignore`) porque contiene la contraseña de la DB.
 
 ## Arquitectura
 
@@ -71,6 +71,17 @@ app/
 ## Decisiones técnicas
 
 **CSS propio en vez de Tailwind CSS**: `app/static/dashboard.css` está escrito a mano (con variables CSS para colores/espaciado/tipografía) en lugar de usar Tailwind, aunque el documento de planificación original (`docs/Etapa1.md`) proponía Tailwind. Es una decisión consciente, no una desviación accidental: Tailwind agregaría una dependencia de build tooling (Node, PostCSS/CLI) a un proyecto que hoy es 100% Python y corre local en la máquina del laboratorio; la superficie de UI es chica (dos vistas, `dashboard.html` y `detalle.html`); y no hay ningún impacto para el usuario final — el navegador recibe CSS compilado en ambos casos, con renderizado y performance equivalentes. El costo de migrar ~1100 líneas de CSS ya funcional no se justifica frente a trabajo pendiente de mayor valor (graficación, migración a Supabase). Si en el futuro el equipo crece o la UI se vuelve mucho más compleja, reevaluar.
+
+## Migración a Supabase
+
+`app/database.py` carga `.env` con `python-dotenv` antes de leer `DATABASE_URL`. Pasos para apuntar a Supabase (Fase 4.1 del plan):
+
+1. Crear el proyecto en Supabase, ir al botón **"Connect"** (arriba del dashboard del proyecto, ya no está bajo Settings → Database) y copiar el connection string del modo **Session pooler** (compatible IPv4; el direct connection puede requerir IPv6).
+2. Copiar `.env.example` a `.env` y pegar ese string en `DATABASE_URL`, reemplazando `[PASSWORD]` por la contraseña real de la DB.
+3. Correr la app (`uvicorn app.main:app --reload`) una vez: el evento `startup` llama a `init_db()`, que crea las tablas en Supabase con `Base.metadata.create_all()` (no hay Alembic en el proyecto).
+4. `metadata_json` y `valores_tiempo_json` usan `JSON().with_variant(JSONB(), "postgresql")` (ver `simulacion.py`/`metrica.py`): siguen siendo `TEXT`/`JSON` genérico en SQLite, pero se crean como `jsonb` real en Postgres — verificable en el Table Editor de Supabase.
+5. Validar escaneando una simulación de prueba y disparando un análisis; confirmar en el Table Editor que las filas y el JSON aparecen bien.
+6. Para volver a desarrollar local, comentar/borrar `DATABASE_URL` en `.env` — el default cae de nuevo a `sqlite:///./simular_local.db`.
 
 ## Seguimiento del plan de trabajo
 
