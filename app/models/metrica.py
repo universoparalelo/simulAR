@@ -1,12 +1,16 @@
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import JSON, ForeignKey, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.simulacion import Simulacion
+
+# JSON genérico en SQLite (TEXT), JSONB nativo en PostgreSQL/Supabase (indexable)
+_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
 class ResultadoMetrica(Base):
@@ -17,7 +21,7 @@ class ResultadoMetrica(Base):
         ForeignKey("simulaciones.id"), nullable=False
     )
     tipo_metrica: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    valores_tiempo_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    valores_tiempo_json: Mapped[Optional[dict]] = mapped_column(_JSON_TYPE, nullable=True)
 
     simulacion: Mapped["Simulacion"] = relationship(
         "Simulacion", back_populates="metricas"
