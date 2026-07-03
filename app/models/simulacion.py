@@ -1,27 +1,32 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.metrica import ResultadoMetrica
 
 
 class Simulacion(Base):
     __tablename__ = "simulaciones"
 
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(255), nullable=False, index=True)
-    ruta_absoluta = Column(String(1024), nullable=False, unique=True)
-    software = Column(String(100), nullable=True)
-    fecha_registro = Column(DateTime, default=datetime.utcnow)
-    metadata_json = Column(JSON, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    nombre: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    ruta_absoluta: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
+    software: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    fecha_registro: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, default=datetime.utcnow
+    )
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relaciones
-    archivos = relationship(
+    archivos: Mapped[List["Archivo"]] = relationship(
         "Archivo", back_populates="simulacion", cascade="all, delete-orphan"
     )
-    metricas = relationship(
+    metricas: Mapped[List["ResultadoMetrica"]] = relationship(
         "ResultadoMetrica", back_populates="simulacion", cascade="all, delete-orphan"
     )
 
@@ -34,14 +39,18 @@ class Simulacion(Base):
 class Archivo(Base):
     __tablename__ = "archivos"
 
-    id = Column(Integer, primary_key=True, index=True)
-    simulacion_id = Column(Integer, ForeignKey("simulaciones.id"), nullable=False)
-    nombre_archivo = Column(String(1024), nullable=False)
-    extension = Column(String(50), nullable=True)
-    tamano_bytes = Column(Integer, nullable=True)
-    tipo = Column(String(50), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    simulacion_id: Mapped[int] = mapped_column(
+        ForeignKey("simulaciones.id"), nullable=False
+    )
+    nombre_archivo: Mapped[str] = mapped_column(String(1024), nullable=False)
+    extension: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    tamano_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tipo: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
-    simulacion = relationship("Simulacion", back_populates="archivos")
+    simulacion: Mapped["Simulacion"] = relationship(
+        "Simulacion", back_populates="archivos"
+    )
 
     def __repr__(self) -> str:  # pragma: no cover - helper
         return f"<Archivo id={self.id} nombre={self.nombre_archivo} simulacion_id={self.simulacion_id}>"
