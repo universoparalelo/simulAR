@@ -5,8 +5,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=2" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=3" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
     <body>
         <div class="dashboard-container">
@@ -27,6 +28,10 @@
                     </div>
                 </div>
                 <div style="display:flex; gap:8px;">
+                    <button class="header-button" id="btnAnalizar" onclick="analizarSimulacion()">
+                        <i class="ti ti-player-play"></i>
+                        Analizar
+                    </button>
                     <button class="header-button" id="btnRescan" onclick="rescanSimulation()">
                         <i class="ti ti-refresh"></i>
                         Re-escanear
@@ -108,6 +113,20 @@
                 </section>
             </div>
 
+            <!-- MÉTRICAS Y GRÁFICOS -->
+            <section class="simulations-section" id="metricasSection">
+                <div class="metricas-header">
+                    <h2 class="section-title">Métricas de análisis</h2>
+                </div>
+                <div class="analisis-banner" id="analisisBanner" style="display:none;"></div>
+                <div class="metricas-charts-grid" id="metricasChartsGrid"></div>
+                <div class="detail-panel" id="propiedadesEstaticasPanel" style="display:none;">
+                    <h3 class="section-title">Propiedades estáticas</h3>
+                    <div class="detail-list" id="propiedadesEstaticasList"></div>
+                </div>
+                <div class="metricas-empty" id="metricasEmpty">Todavía no se calcularon métricas para esta simulación.</div>
+            </section>
+
             <!-- TABLA DE ARCHIVOS -->
             <section class="simulations-section">
                 <h2 class="section-title">Archivos detectados</h2>
@@ -132,6 +151,14 @@
 
         <script>
             const simulationId = {{ simulation_id }};
+            let pollInterval = null;
+            const charts = {};
+
+            const METRIC_CONFIG = {
+                rmsd: { label: 'RMSD (Å)', xKey: 'tiempos_ps', yKey: 'rmsd_angstrom', xLabel: 'Tiempo (ps)', color: '#1971c2' },
+                rg: { label: 'Radio de giro (Å)', xKey: 'tiempos_ps', yKey: 'rg_angstrom', xLabel: 'Tiempo (ps)', color: '#2f9e44' },
+                energia_minimizacion: { label: 'Energía (kcal/mol)', xKey: 'pasos', yKey: 'energia_kcal_mol', xLabel: 'Paso de minimización', color: '#f08c00' },
+            };
 
             function formatBytes(bytes) {
                 if (!bytes) return '0 B';
@@ -186,9 +213,8 @@
                 const sim = await simRes.json();
                 const archivos = archivosRes.ok ? await archivosRes.json() : [];
 
-                // Parsear metadata
-                let meta = {};
-                try { meta = JSON.parse(sim.metadata_json || '{}'); } catch {}
+                // metadata_json ya viaja como objeto (columna JSON nativa), no como string
+                const meta = sim.metadata_json || {};
 
                 // Header
                 document.title = `${sim.nombre} - QuITEx`;
@@ -198,7 +224,8 @@
                 document.getElementById('metSoftware').textContent = sim.software || '—';
                 document.getElementById('metArchivos').textContent = archivos.length;
                 document.getElementById('metStorage').textContent = formatBytes(meta.total_bytes);
-                document.getElementById('metEstado').textContent = sim.metricas?.length ? 'Analizado' : 'Pendiente';
+                const estadoLabels = { pendiente: 'Pendiente', procesando: 'Procesando...', completado: 'Analizado', error: 'Error' };
+                document.getElementById('metEstado').textContent = estadoLabels[sim.estado_analisis] || 'Pendiente';
 
                 // Info general
                 document.getElementById('infoRuta').textContent = sim.ruta_absoluta;
@@ -222,6 +249,10 @@
                 setTimelineItem('tlSoftware', !!sim.software, !sim.software && archivos.length > 0);
                 setTimelineItem('tlMetricas', sim.metricas?.length > 0, !sim.metricas?.length);
 
+                // Métricas y estado del análisis
+                updateAnalisisBanner(sim);
+                renderMetricas(sim.metricas || []);
+
                 // Tabla de archivos
                 const tbody = document.getElementById('archivosBody');
                 if (archivos.length === 0) {
@@ -241,6 +272,151 @@
             function tagClass(tipo) {
                 const map = { trajectory: 'subject', input: 'program', output: 'duration', restart: 'storage' };
                 return map[tipo] || '';
+            }
+
+            async function analizarSimulacion() {
+                const btn = document.getElementById('btnAnalizar');
+                btn.disabled = true;
+                try {
+                    const res = await fetch(`/api/simulaciones/${simulationId}/analizar`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ metricas: ['rmsd', 'rg'] }),
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        alert(`No se pudo iniciar el análisis: ${err.detail || res.status}`);
+                        btn.disabled = false;
+                        return;
+                    }
+                    await loadSimulation();
+                } catch {
+                    alert('Error de red al iniciar el análisis.');
+                    btn.disabled = false;
+                }
+            }
+
+            function startPolling() {
+                if (pollInterval) return;
+                pollInterval = setInterval(async () => {
+                    const res = await fetch(`/api/simulaciones/${simulationId}`);
+                    if (!res.ok) return;
+                    const sim = await res.json();
+                    if (sim.estado_analisis === 'procesando') {
+                        updateAnalisisBanner(sim);
+                    } else {
+                        stopPolling();
+                        await loadSimulation();
+                    }
+                }, 3000);
+            }
+
+            function stopPolling() {
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                }
+            }
+
+            function updateAnalisisBanner(sim) {
+                const banner = document.getElementById('analisisBanner');
+                const btn = document.getElementById('btnAnalizar');
+                banner.classList.remove('info', 'danger');
+
+                if (sim.estado_analisis === 'procesando') {
+                    banner.style.display = 'flex';
+                    banner.classList.add('info');
+                    banner.innerHTML = '<i class="ti ti-loader-2 spin"></i> Analizando simulación en segundo plano...';
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Procesando...';
+                    startPolling();
+                } else if (sim.estado_analisis === 'error') {
+                    banner.style.display = 'flex';
+                    banner.classList.add('danger');
+                    banner.innerHTML = `<i class="ti ti-alert-triangle"></i> Error en el análisis: ${sim.analisis_error || 'desconocido'}`;
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="ti ti-player-play"></i> Reintentar análisis';
+                    stopPolling();
+                } else {
+                    banner.style.display = 'none';
+                    btn.disabled = false;
+                    btn.innerHTML = sim.metricas?.length
+                        ? '<i class="ti ti-refresh"></i> Re-analizar'
+                        : '<i class="ti ti-player-play"></i> Analizar';
+                    stopPolling();
+                }
+            }
+
+            function renderMetricas(metricas) {
+                const grid = document.getElementById('metricasChartsGrid');
+                Object.values(charts).forEach((c) => c.destroy());
+                for (const key in charts) delete charts[key];
+                grid.innerHTML = '';
+
+                let propiedades = null;
+                let huboSeries = false;
+
+                for (const m of metricas) {
+                    if (m.tipo_metrica === 'propiedades_estaticas') {
+                        propiedades = m.valores_tiempo_json;
+                        continue;
+                    }
+                    const config = METRIC_CONFIG[m.tipo_metrica];
+                    const datos = m.valores_tiempo_json;
+                    if (!config || !datos || !datos[config.yKey]?.length) continue;
+
+                    huboSeries = true;
+                    const panel = document.createElement('div');
+                    panel.className = 'detail-panel metric-chart-panel';
+                    panel.innerHTML = `<h3 class="section-title">${config.label}</h3><canvas></canvas>`;
+                    grid.appendChild(panel);
+
+                    const puntos = datos[config.xKey].map((x, i) => ({ x, y: datos[config.yKey][i] }));
+
+                    charts[m.tipo_metrica] = new Chart(panel.querySelector('canvas'), {
+                        type: 'line',
+                        data: {
+                            datasets: [{
+                                label: config.label,
+                                data: puntos,
+                                borderColor: config.color,
+                                backgroundColor: config.color + '22',
+                                pointRadius: 0,
+                                borderWidth: 2,
+                                tension: 0.15,
+                                fill: true,
+                            }],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: {
+                                    type: 'linear',
+                                    title: { display: true, text: config.xLabel },
+                                    ticks: { callback: (v) => Number(v).toFixed(0), maxTicksLimit: 8 },
+                                },
+                                y: { title: { display: true, text: config.label } },
+                            },
+                            plugins: { legend: { display: false } },
+                        },
+                    });
+                }
+
+                const propPanel = document.getElementById('propiedadesEstaticasPanel');
+                if (propiedades) {
+                    document.getElementById('propiedadesEstaticasList').innerHTML = `
+                        <div class="detail-list-row"><span>Átomos</span><strong>${propiedades.n_atomos ?? '—'}</strong></div>
+                        <div class="detail-list-row"><span>Residuos</span><strong>${propiedades.n_residuos ?? '—'}</strong></div>
+                        <div class="detail-list-row"><span>Radio de giro</span><strong>${typeof propiedades.rg_angstrom === 'number' ? propiedades.rg_angstrom.toFixed(2) + ' Å' : '—'}</strong></div>
+                        <div class="detail-list-row"><span>Masa total</span><strong>${typeof propiedades.masa_total_uma === 'number' ? propiedades.masa_total_uma.toFixed(1) + ' uma' : '—'}</strong></div>
+                    `;
+                    propPanel.style.display = '';
+                } else {
+                    propPanel.style.display = 'none';
+                }
+
+                document.getElementById('metricasEmpty').style.display = (huboSeries || propiedades) ? 'none' : '';
             }
 
             async function rescanSimulation() {

@@ -1082,6 +1082,81 @@ button:active {
     animation: pulse 1.5s ease-in-out infinite;
 }
 
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spin {
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+}
+
+/* ============================================
+   MÉTRICAS DE ANÁLISIS (detalle.html)
+   ============================================ */
+
+.metricas-header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-md);
+}
+
+.metricas-header .section-title {
+    margin-bottom: 0;
+}
+
+.analisis-banner {
+    align-items: center;
+    border-radius: var(--border-radius-md);
+    display: flex;
+    gap: var(--spacing-sm);
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.analisis-banner.info {
+    background-color: var(--color-background-info);
+    color: var(--color-text-info);
+}
+
+.analisis-banner.danger {
+    background-color: var(--color-background-danger);
+    color: var(--color-text-danger);
+}
+
+.metricas-charts-grid {
+    display: grid;
+    gap: var(--spacing-md);
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    margin-bottom: var(--spacing-md);
+}
+
+.metric-chart-panel {
+    display: flex;
+    flex-direction: column;
+    height: 280px;
+}
+
+.metric-chart-panel canvas {
+    flex: 1;
+    min-height: 0;
+}
+
+.metricas-empty {
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    padding: var(--spacing-lg) 0;
+    text-align: center;
+}
+
 /* ============================================
    SCROLLBAR PERSONALIZADO
    ============================================ */
