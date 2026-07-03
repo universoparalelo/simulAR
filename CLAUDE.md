@@ -74,13 +74,16 @@ app/
 
 ## Migración a Supabase
 
-`app/database.py` carga `.env` con `python-dotenv` antes de leer `DATABASE_URL`. Pasos para apuntar a Supabase (Fase 4.1 del plan):
+`app/database.py` carga `.env` con `python-dotenv` antes de leer `DATABASE_URL`. **Ya validada end-to-end** (Fase 4.1 del plan completa): tablas creadas, `jsonb` confirmado con `jsonb_typeof()`, y flujo completo probado contra la DB real (import → análisis en background → polling → gráficos → cascade delete).
+
+Pasos para apuntar a Supabase:
 
 1. Crear el proyecto en Supabase, ir al botón **"Connect"** (arriba del dashboard del proyecto, ya no está bajo Settings → Database) y copiar el connection string del modo **Session pooler** (compatible IPv4; el direct connection puede requerir IPv6).
 2. Copiar `.env.example` a `.env` y pegar ese string en `DATABASE_URL`, reemplazando `[PASSWORD]` por la contraseña real de la DB.
-3. Correr la app (`uvicorn app.main:app --reload`) una vez: el evento `startup` llama a `init_db()`, que crea las tablas en Supabase con `Base.metadata.create_all()` (no hay Alembic en el proyecto).
-4. `metadata_json` y `valores_tiempo_json` usan `JSON().with_variant(JSONB(), "postgresql")` (ver `simulacion.py`/`metrica.py`): siguen siendo `TEXT`/`JSON` genérico en SQLite, pero se crean como `jsonb` real en Postgres — verificable en el Table Editor de Supabase.
-5. Validar escaneando una simulación de prueba y disparando un análisis; confirmar en el Table Editor que las filas y el JSON aparecen bien.
+   - **Ojo con caracteres especiales en la contraseña**: si Supabase generó una contraseña con `@` (u otro carácter reservado de URL), hay que percent-encodearlo (`@` → `%40`) o el parser corta el connection string en el lugar equivocado y arma un host inválido. Verificar con `sqlalchemy.engine.url.make_url(DATABASE_URL)` y chequear que `.host` sea el esperado antes de asumir que anda.
+3. Instalar el driver: `psycopg2-binary` ya está en `requirements.txt`. **Importante en esta máquina**: el `pip`/`python` que resuelve la terminal por default es el de Anaconda, no el del `.venv` del proyecto — instalar siempre con la ruta explícita (`.venv\Scripts\python.exe -m pip install ...`), si no el paquete queda en el entorno equivocado y `create_engine()` falla con `ModuleNotFoundError: No module named 'psycopg2'` aunque `pip show` "lo encuentre".
+4. Correr la app (`uvicorn app.main:app --reload`) una vez: el evento `startup` llama a `init_db()`, que crea las tablas en Supabase con `Base.metadata.create_all()` (no hay Alembic en el proyecto).
+5. `metadata_json` y `valores_tiempo_json` usan `JSON().with_variant(JSONB(), "postgresql")` (ver `simulacion.py`/`metrica.py`): siguen siendo `TEXT`/`JSON` genérico en SQLite, pero se crean como `jsonb` real en Postgres.
 6. Para volver a desarrollar local, comentar/borrar `DATABASE_URL` en `.env` — el default cae de nuevo a `sqlite:///./simular_local.db`.
 
 ## Seguimiento del plan de trabajo

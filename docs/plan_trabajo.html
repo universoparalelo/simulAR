@@ -333,9 +333,9 @@
             <h3>Fase 4.1 — Migración a Supabase (PostgreSQL Cloud)</h3>
             <ul class="task-list">
                 <li class="task"><input type="checkbox" id="e4-1"><label for="e4-1">Crear cuenta y proyecto en el plan gratuito de Supabase</label></li>
-                <li class="task"><input type="checkbox" id="e4-2"><label for="e4-2">Crear tablas en Supabase (desde modelos o panel)</label></li>
-                <li class="task"><input type="checkbox" id="e4-3"><label for="e4-3">Configurar variables de entorno (.env) apuntando DATABASE_URL a Supabase<span class="note">python-dotenv está instalado pero no se usa aún en el código; no hay archivo .env en el repo</span></label></li>
-                <li class="task"><input type="checkbox" id="e4-4"><label for="e4-4">Validar escaneo + envío de vectores numéricos a columna JSONB en Supabase</label></li>
+                <li class="task"><input type="checkbox" id="e4-2"><label for="e4-2">Crear tablas en Supabase (desde modelos o panel)<span class="note">init_db() vía Base.metadata.create_all(); confirmado esquema completo con jsonb en metadata_json/valores_tiempo_json</span></label></li>
+                <li class="task"><input type="checkbox" id="e4-3"><label for="e4-3">Configurar variables de entorno (.env) apuntando DATABASE_URL a Supabase<span class="note">python-dotenv cargado en database.py; .env gitignorado, .env.example como plantilla. Ojo: si la contraseña de Supabase trae "@", hay que escaparlo como %40 en la URL</span></label></li>
+                <li class="task"><input type="checkbox" id="e4-4"><label for="e4-4">Validar escaneo + envío de vectores numéricos a columna JSONB en Supabase<span class="note">Probado end-to-end contra la DB real: import + análisis en background + polling + gráficos en el navegador + cascade delete, todo verificado con jsonb_typeof() sobre las filas reales</span></label></li>
             </ul>
         </div>
         <div class="phase">
@@ -369,7 +369,8 @@
         'doc-1', 'doc-2', 'doc-3', 'doc-4',
         'e1-1', 'e1-2', 'e1-3', 'e1-4', 'e1-5', 'e1-6',
         'e2-1', 'e2-2', 'e2-3', 'e2-4', 'e2-5', 'e2-6', 'e2-7', 'e2-8', 'e2-9',
-        'e3-1', 'e3-2', 'e3-3', 'e3-4', 'e3-5'
+        'e3-1', 'e3-2', 'e3-3', 'e3-4', 'e3-5',
+        'e4-1', 'e4-2', 'e4-3', 'e4-4'
     ];
 
     function loadState() {
