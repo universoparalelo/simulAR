@@ -21,6 +21,10 @@ class Simulacion(Base):
         DateTime, default=datetime.utcnow
     )
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    estado_analisis: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pendiente", server_default="pendiente"
+    )
+    analisis_error: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
 
     # Relaciones
     archivos: Mapped[List["Archivo"]] = relationship(

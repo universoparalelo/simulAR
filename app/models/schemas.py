@@ -31,6 +31,8 @@ class SimulacionOut(BaseModel):
     software: Optional[str]
     fecha_registro: Optional[datetime]
     metadata_json: Optional[Dict[str, Any]]
+    estado_analisis: str
+    analisis_error: Optional[str]
     archivos: List[ArchivoOut] = Field(default_factory=list)
     metricas: List[ResultadoMetricaOut] = Field(default_factory=list)
 

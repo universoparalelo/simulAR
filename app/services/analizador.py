@@ -585,3 +585,39 @@ def analizar_simulacion(
             resultados["errores"].append(f"Radio de giro: {exc}")
 
     return resultados
+
+
+# ---------------------------------------------------------------------------
+# Wrapper para ejecución en segundo plano (FastAPI BackgroundTasks)
+# ---------------------------------------------------------------------------
+
+def analizar_simulacion_background(
+    simulacion_id: int,
+    metricas: list[str] | None = None,
+) -> None:
+    """Corre `analizar_simulacion` en background con sesión propia.
+
+    Se usa desde un BackgroundTask de FastAPI, que se ejecuta después de que
+    la request ya respondió: la sesión inyectada por `Depends(get_db)` está
+    cerrada para entonces, así que acá se abre y cierra una sesión nueva.
+    Actualiza `estado_analisis`/`analisis_error` en la simulación al terminar.
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        analizar_simulacion(db, simulacion_id, metricas=metricas)
+        sim = db.query(Simulacion).filter_by(id=simulacion_id).first()
+        if sim is not None:
+            sim.estado_analisis = "completado"
+            sim.analisis_error = None
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        sim = db.query(Simulacion).filter_by(id=simulacion_id).first()
+        if sim is not None:
+            sim.estado_analisis = "error"
+            sim.analisis_error = str(exc)
+            db.commit()
+    finally:
+        db.close()

@@ -4,7 +4,16 @@ from typing import List, Optional
 
 from fastapi.responses import FileResponse
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -193,25 +202,29 @@ def create_app():
 
         return sim
 
-    @app.post("/api/simulaciones/{simulacion_id}/analizar")
+    @app.post("/api/simulaciones/{simulacion_id}/analizar", status_code=202)
     def analizar(
         simulacion_id: int,
         payload: AnalisisRequest,
+        background_tasks: BackgroundTasks,
         db: Session = Depends(get_db),
     ):
-        """Ejecuta el pipeline de análisis (RMSD, radio de giro) sobre una simulación
-        y guarda los resultados en la DB."""
-        from app.services.analizador import analizar_simulacion
+        """Encola el pipeline de análisis (RMSD, radio de giro) en segundo plano
+        y devuelve de inmediato; el estado se consulta vía GET /api/simulaciones/{id}."""
+        from app.services.analizador import analizar_simulacion_background
 
-        try:
-            resultado = analizar_simulacion(db, simulacion_id, metricas=payload.metricas)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc))
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
-        return resultado
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+
+        sim.estado_analisis = "procesando"
+        sim.analisis_error = None
+        db.commit()
+
+        background_tasks.add_task(
+            analizar_simulacion_background, simulacion_id, payload.metricas
+        )
+        return {"simulacion_id": simulacion_id, "estado_analisis": "procesando"}
 
     @app.post("/api/simulaciones/{simulacion_id}/rescan", response_model=SimulacionOut)
     def rescan_simulation(simulacion_id: int, db: Session = Depends(get_db)):
