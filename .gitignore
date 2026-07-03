@@ -31,6 +31,7 @@ MANIFEST
 # Base de datos
 data/simulations.db
 data/*.db
+simular_local.db
 
 # IDE
 .vscode/
