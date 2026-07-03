@@ -1,4 +1,3 @@
-import json
 from typing import Any, List, Optional
 
 from sqlalchemy.orm import Session
@@ -29,7 +28,7 @@ def update(
     if software is not None:
         sim.software = software
     if metadata is not None:
-        sim.metadata_json = json.dumps(metadata)
+        sim.metadata_json = metadata
     db.commit()
     db.refresh(sim)
     return sim

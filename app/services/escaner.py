@@ -1,4 +1,3 @@
-import json
 import os
 from typing import Any, Optional
 
@@ -220,7 +219,7 @@ def register_simulation(
         nombre=nombre,
         ruta_absoluta=ruta_absoluta,
         software=software,
-        metadata_json=json.dumps(metadata),
+        metadata_json=metadata,
     )
     db.add(sim)
     db.flush()

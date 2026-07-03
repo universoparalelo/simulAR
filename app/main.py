@@ -229,8 +229,7 @@ def create_app():
         metadata = build_metadata(sim.ruta_absoluta, files, software)
 
         sim.software = software
-        import json
-        sim.metadata_json = json.dumps(metadata)
+        sim.metadata_json = metadata
 
         # Sincronizar archivos: borrar los anteriores y re-agregar
         from app.models.simulacion import Archivo

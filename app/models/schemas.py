@@ -30,7 +30,7 @@ class SimulacionOut(BaseModel):
     ruta_absoluta: str
     software: Optional[str]
     fecha_registro: Optional[datetime]
-    metadata_json: Optional[str]
+    metadata_json: Optional[Dict[str, Any]]
     archivos: List[ArchivoOut] = Field(default_factory=list)
     metricas: List[ResultadoMetricaOut] = Field(default_factory=list)
 

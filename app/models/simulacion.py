@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -15,9 +15,7 @@ class Simulacion(Base):
     ruta_absoluta = Column(String(1024), nullable=False, unique=True)
     software = Column(String(100), nullable=True)
     fecha_registro = Column(DateTime, default=datetime.utcnow)
-    metadata_json = Column(
-        Text, nullable=True
-    )  # Guardamos JSON serializado como TEXT en SQLite
+    metadata_json = Column(JSON, nullable=True)
 
     # Relaciones
     archivos = relationship(
