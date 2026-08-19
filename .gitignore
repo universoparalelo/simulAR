@@ -58,6 +58,9 @@ logs/
 *.temp
 .cache/
 
+# Docker
+data/
+
 # Sistema operativo
 .DS_Store
 Thumbs.db

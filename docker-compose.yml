@@ -1,0 +1,18 @@
+services:
+  simular:
+    build: .
+    container_name: simular
+    ports:
+      - "8000:8000"
+    volumes:
+      - simular_data:/simulAR/data
+      - ${SIMULACIONES_PATH:-./simulaciones}:/simulaciones:ro
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////simulAR/data/simular_local.db}
+    restart: unless-stopped
+
+volumes:
+  simular_data:

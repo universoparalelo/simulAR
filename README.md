@@ -1,19 +1,83 @@
 # simulAR
 
-Aplicacion web minima para visualizar y simular la gestion de simulaciones moleculares.
+Aplicacion web para gestionar, analizar y visualizar simulaciones moleculares generadas por AMBER, GAMESS, Gaussian y GROMACS. Desarrollada para el laboratorio QuITEx (UTN).
 
-La arquitectura actual usa FastAPI como backend, Jinja2 para templates HTML y archivos estaticos servidos desde la propia aplicacion.
+La app usa FastAPI como backend, Jinja2 para templates HTML, Chart.js para graficos interactivos y MDAnalysis para el pipeline de analisis cientifico (RMSD, radio de giro, energia de minimizacion).
 
 ## Requisitos
 
-- Python 3.10 o superior
-- pip
+- **Docker** (recomendado para despliegue) o **Python 3.11+** (instalacion manual)
 
-## Instalacion
+## Instalacion con Docker (recomendado)
 
-Puedes crear un entorno virtual usando `venv` o usar `conda`/`mamba`. Abajo hay ejemplos para ambos casos.
+### 1. Clonar el repositorio
 
-- Usando `venv` (Linux / macOS):
+```bash
+git clone <url-del-repo>
+cd simulAR
+```
+
+### 2. (Opcional) Configurar base de datos
+
+Por defecto la app usa SQLite dentro del contenedor (persistido en un volumen Docker). Para usar Supabase/PostgreSQL, copiar `.env.example` a `.env` y configurar `DATABASE_URL`:
+
+```bash
+cp .env.example .env
+# Editar .env con el connection string de Supabase
+```
+
+### 3. Construir y levantar
+
+```bash
+docker compose up -d --build
+```
+
+La app queda disponible en `http://localhost:8000`.
+
+### Montar carpetas de simulaciones
+
+El contenedor necesita acceso a las carpetas del disco donde estan los archivos de simulacion. Por defecto monta `./simulaciones` del proyecto. Para apuntar a la carpeta real del laboratorio, definir `SIMULACIONES_PATH` en `.env`:
+
+```env
+SIMULACIONES_PATH=/ruta/a/las/simulaciones
+```
+
+O pasar la variable al levantar:
+
+```bash
+SIMULACIONES_PATH=/ruta/simulaciones docker compose up -d
+```
+
+Dentro del contenedor, las simulaciones quedan disponibles en `/simulaciones`. Al importar o escanear desde la app, usar esa ruta (por ejemplo `/simulaciones/mi_carpeta`).
+
+Para montar carpetas adicionales, agregar volumenes en `docker-compose.yml`:
+
+```yaml
+volumes:
+  - /otra/ruta/host:/simulaciones_extra:ro
+```
+
+### Comandos utiles
+
+```bash
+# Ver logs en tiempo real
+docker compose logs -f
+
+# Parar el contenedor
+docker compose down
+
+# Eliminar contenedor y volumen de datos (base de datos y uploads)
+docker compose down -v
+
+# Reconstruir despues de cambios en el codigo
+docker compose up -d --build
+```
+
+## Instalacion manual
+
+### 1. Crear entorno virtual
+
+- Linux / macOS:
 
 ```bash
 python -m venv .venv
@@ -21,94 +85,70 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-- Usando `venv` (Windows PowerShell):
+- Windows (PowerShell):
 
 ```powershell
 python -m venv .venv
-# PowerShell
-. .venv/Scripts/Activate.ps1
-# Si estás usando cmd.exe:
-# .venv\Scripts\activate.bat
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-- Usando `conda` (Anaconda / Miniconda). Este flujo crea un entorno con la versión requerida de Python y utiliza `pip` para instalar las dependencias definidas en `requirements.txt`:
+- Conda / Miniconda:
 
 ```bash
-# Crear el entorno (ej. Python 3.10)
-conda create -n simulAR python=3.10 -y
+conda create -n simulAR python=3.11 -y
 conda activate simulAR
-# Instalar dependencias desde pip (recomendado para este proyecto)
 pip install -r requirements.txt
 ```
 
-Opcional: instalar algunas dependencias vía conda (ej.: SQLAlchemy o paquetes científicos) desde conda-forge:
+### 2. (Opcional) Configurar Supabase
 
 ```bash
-conda install -n simulAR -c conda-forge sqlalchemy
-# o usando mamba (si lo tenés instalado):
-# mamba install -n simulAR -c conda-forge sqlalchemy
+cp .env.example .env
+# Editar .env con el connection string
 ```
 
-Notas:
-- Si trabajás con archivos y librerías científicas pesadas (BLAS, LAPACK, etc.), `conda`/`conda-forge` suele resolver binarios de forma más cómoda.
-- En entornos compartidos (servidor del laboratorio) podés preferir `conda` para gestionar dependencias del sistema.
+### 3. Ejecutar
 
-
-## Ejecutar
-
-```powershell
+```bash
 uvicorn app.main:app --reload
 ```
 
-Abrir:
+Abrir `http://127.0.0.1:8000` en el navegador.
 
-```text
-http://127.0.0.1:8000/
-```
+## Endpoints principales
 
-Vista de detalle simulada:
-
-```text
-http://127.0.0.1:8000/simulaciones/protein_folding_md_001
-```
-
-Documentacion automatica de la API:
-
-```text
-http://127.0.0.1:8000/docs
-```
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| GET | `/` | Dashboard principal |
+| GET | `/simulaciones/{id}` | Detalle con graficos |
+| GET | `/docs` | Documentacion Swagger |
+| POST | `/api/simulaciones/import` | Registrar carpeta de disco |
+| POST | `/api/simulaciones/upload` | Subir archivos desde el browser |
+| POST | `/api/escanear` | Escanear subcarpetas de una raiz |
+| POST | `/api/simulaciones/{id}/analizar` | Lanzar analisis en background |
+| GET | `/api/simulaciones` | Listar simulaciones |
+| DELETE | `/api/simulaciones/{id}` | Eliminar simulacion |
 
 ## Arquitectura
 
-```text
-simulAR/
-|-- app/
-|   |-- main.py                 # Entrada FastAPI, rutas y montaje de static
-|   |-- database.py             # Futuro acceso a datos
-|   |-- models/
-|   |   |-- metrica.py          # Futuro modelo de metricas
-|   |   `-- simulacion.py       # Futuro modelo de simulaciones
-|   |-- services/
-|   |   |-- analizador.py       # Futuro analisis de resultados
-|   |   `-- escaner.py          # Futuro escaneo de directorios
-|   |-- static/
-|   |   `-- dashboard.css       # Estilos compartidos
-|   `-- templates/
-|       |-- dashboard.html      # Vista principal
-|       `-- detalle.html        # Vista de detalle simulada
-|-- docs/
-|-- requirements.txt
-`-- README.md
 ```
-
-## Rutas actuales
-
-- `GET /`: dashboard principal.
-- `GET /simulaciones/{simulation_id}`: detalle simulado de una simulacion.
-- `GET /static/{path}`: archivos estaticos.
-- `GET /docs`: documentacion Swagger generada por FastAPI.
-
-## Estado actual
-
-La interfaz usa datos simulados. Los modulos de base de datos, modelos y servicios estan preparados como puntos de extension para conectar escaneo real, persistencia y analisis de simulaciones.
+simulAR/
+├── app/
+│   ├── main.py              # Entrada FastAPI: rutas HTTP y montaje de static
+│   ├── database.py          # Engine SQLAlchemy, SessionLocal, Base, init_db()
+│   ├── models/
+│   │   ├── simulacion.py    # ORM: Simulacion (1) -> Archivo (N)
+│   │   ├── metrica.py       # ORM: ResultadoMetrica (N) -> Simulacion (1)
+│   │   └── schemas.py       # Pydantic schemas para request/response
+│   ├── repositories/        # Capa CRUD
+│   ├── services/
+│   │   ├── escaner.py       # Escaneo de directorios, deteccion de software
+│   │   └── analizador.py    # Pipeline MDAnalysis: RMSD, Rg, energia
+│   ├── templates/           # dashboard.html, detalle.html
+│   └── static/              # CSS, logo UTN
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── .env.example
+```
