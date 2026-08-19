@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=3" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=4" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
@@ -125,6 +125,32 @@
                     <div class="detail-list" id="propiedadesEstaticasList"></div>
                 </div>
                 <div class="metricas-empty" id="metricasEmpty">Todavía no se calcularon métricas para esta simulación.</div>
+            </section>
+
+            <!-- ANÁLISIS DE ALMACENAMIENTO -->
+            <section class="simulations-section" id="storageSection" style="display:none;">
+                <h2 class="section-title">Optimización de almacenamiento</h2>
+                <div class="storage-summary" id="storageSummary"></div>
+                <div class="storage-bar-container" id="storageBar"></div>
+                <div id="deletableFilesContainer" style="display:none;">
+                    <h3 class="section-title" style="margin-top:16px;">Archivos eliminables</h3>
+                    <div class="detail-table-wrapper">
+                        <table class="detail-table">
+                            <thead>
+                                <tr>
+                                    <th>Archivo</th>
+                                    <th>Extensión</th>
+                                    <th>Tamaño</th>
+                                    <th>Motivo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deletableFilesBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="storage-clean-message" id="storageCleanMessage" style="display:none;">
+                    No se encontraron archivos eliminables. El almacenamiento está optimizado.
+                </div>
             </section>
 
             <!-- TABLA DE ARCHIVOS -->
@@ -438,7 +464,86 @@
                 }
             }
 
-            document.addEventListener('DOMContentLoaded', loadSimulation);
+            const DELETABLE_REASONS = {
+                '.chk': 'Checkpoint Gaussian (regenerable)',
+                '.mdvel': 'Velocidades (no necesarias tras completar)',
+                '.mdinfo': 'Progreso intermedio (info temporal)',
+                '.edr': 'Energía binaria GROMACS (ya extraída)',
+                '.cpt': 'Checkpoint GROMACS (solo para reiniciar)',
+                '.mdcrd': 'Trayectoria ASCII (ya existe .nc binario)',
+                '.bak': 'Backup automático',
+                '.tmp': 'Archivo temporal',
+                '.rst': 'Restart intermedio (existe uno más reciente)',
+                '.rst7': 'Restart intermedio (existe uno más reciente)',
+                '.ncrst': 'Restart intermedio (existe uno más reciente)',
+            };
+
+            function deletableReason(archivo) {
+                const ext = (archivo.extension || '').toLowerCase();
+                return DELETABLE_REASONS[ext] || 'Archivo no esencial';
+            }
+
+            async function loadStorageAnalysis() {
+                try {
+                    const res = await fetch(`/api/simulaciones/${simulationId}/storage`);
+                    if (!res.ok) return;
+                    const data = await res.json();
+
+                    const section = document.getElementById('storageSection');
+                    section.style.display = '';
+
+                    const total = data.total_bytes || 1;
+                    const essPct = ((data.essential_bytes / total) * 100).toFixed(1);
+                    const usePct = ((data.useful_bytes / total) * 100).toFixed(1);
+                    const delPct = ((data.deletable_bytes / total) * 100).toFixed(1);
+
+                    document.getElementById('storageSummary').innerHTML = `
+                        <div class="storage-stat">
+                            <span class="storage-dot essential"></span>
+                            <span>Esencial: <strong>${formatBytes(data.essential_bytes)}</strong> (${essPct}%)</span>
+                        </div>
+                        <div class="storage-stat">
+                            <span class="storage-dot useful"></span>
+                            <span>Útil: <strong>${formatBytes(data.useful_bytes)}</strong> (${usePct}%)</span>
+                        </div>
+                        <div class="storage-stat">
+                            <span class="storage-dot deletable"></span>
+                            <span>Eliminable: <strong>${formatBytes(data.deletable_bytes)}</strong> (${delPct}%)</span>
+                        </div>
+                    `;
+
+                    document.getElementById('storageBar').innerHTML = `
+                        <div class="storage-bar">
+                            <div class="storage-bar-segment essential" style="width:${essPct}%"></div>
+                            <div class="storage-bar-segment useful" style="width:${usePct}%"></div>
+                            <div class="storage-bar-segment deletable" style="width:${delPct}%"></div>
+                        </div>
+                    `;
+
+                    if (data.deletable_files.length > 0) {
+                        document.getElementById('deletableFilesContainer').style.display = '';
+                        document.getElementById('storageCleanMessage').style.display = 'none';
+                        document.getElementById('deletableFilesBody').innerHTML = data.deletable_files.map(f => `
+                            <tr>
+                                <td style="font-family:var(--font-mono);font-size:12px">${f.nombre_archivo}</td>
+                                <td style="color:var(--color-text-secondary)">${f.extension || '—'}</td>
+                                <td>${formatBytes(f.tamano_bytes)}</td>
+                                <td style="color:var(--color-text-secondary);font-size:12px">${deletableReason(f)}</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        document.getElementById('deletableFilesContainer').style.display = 'none';
+                        document.getElementById('storageCleanMessage').style.display = '';
+                    }
+                } catch (e) {
+                    // Silently fail — storage analysis is optional
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                loadSimulation();
+                loadStorageAnalysis();
+            });
         </script>
     </body>
 </html>

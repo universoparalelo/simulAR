@@ -32,6 +32,7 @@ from app.models.schemas import (
 )
 from app.repositories import archivo_repo, metrica_repo, simulacion_repo
 from app.services.escaner import (
+    analyze_storage,
     build_metadata,
     detect_software,
     list_simulations,
@@ -356,6 +357,15 @@ def create_app():
         if sim is None:
             raise HTTPException(status_code=404, detail="Simulación no encontrada")
         metrica_repo.delete_by_simulacion(db, simulacion_id)
+
+    # --- Almacenamiento ---
+
+    @app.get("/api/simulaciones/{simulacion_id}/storage")
+    def get_storage_analysis(simulacion_id: int, db: Session = Depends(get_db)):
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        return analyze_storage(sim.archivos)
 
     @app.delete("/api/metricas/{metrica_id}", status_code=204)
     def delete_metrica(metrica_id: int, db: Session = Depends(get_db)):

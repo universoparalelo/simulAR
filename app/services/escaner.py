@@ -306,3 +306,91 @@ def scan_directory_for_simulations(
 
 def list_simulations(db: Session) -> list[Simulacion]:
     return db.query(Simulacion).order_by(Simulacion.fecha_registro.desc()).all()
+
+
+# ============================================================
+# Análisis de almacenamiento
+# ============================================================
+
+_ESSENTIAL_EXTS = {".prmtop", ".pdb", ".gro", ".top", ".psf", ".mol2",
+                   ".nc", ".xtc", ".trr", ".dcd",
+                   ".mdin", ".mdp", ".gjf", ".inp", ".inpcrd"}
+
+_DELETABLE_EXTS = {".mdinfo", ".mdvel", ".mdcrd",
+                   ".edr", ".cpt",
+                   ".chk",
+                   ".bak", ".tmp"}
+
+_DELETABLE_PATTERNS = {"#"}
+
+
+def classify_deletability(archivo: Archivo, all_archivos: list[Archivo]) -> str:
+    """Clasifica un archivo como 'essential', 'useful' o 'deletable'.
+
+    Reglas:
+      - Topologías, trayectorias principales e inputs → essential
+      - Checkpoints (.chk), velocidades (.mdvel), energía binaria (.edr),
+        backups, mdcrd duplicados cuando existe .nc → deletable
+      - Restarts: solo el más reciente es useful, el resto deletable
+      - Outputs (.out, .log): useful (contienen datos parseables)
+      - Todo lo demás → useful
+    """
+    ext = (archivo.extension or "").lower()
+    nombre = archivo.nombre_archivo or ""
+
+    if ext in _ESSENTIAL_EXTS:
+        return "essential"
+
+    if ext in _DELETABLE_EXTS:
+        return "deletable"
+
+    if any(nombre.startswith(p) or nombre.endswith(p) for p in _DELETABLE_PATTERNS):
+        return "deletable"
+
+    # .mdcrd es deletable si ya existe .nc (formato binario más eficiente)
+    if ext == ".mdcrd":
+        has_nc = any((a.extension or "").lower() == ".nc" for a in all_archivos)
+        return "deletable" if has_nc else "essential"
+
+    # Restarts: solo el más grande (último) es useful, el resto deletable
+    if ext in RESTART_EXTS:
+        restarts = [a for a in all_archivos if (a.extension or "").lower() in RESTART_EXTS]
+        if len(restarts) <= 1:
+            return "useful"
+        biggest = max(restarts, key=lambda a: a.tamano_bytes or 0)
+        return "useful" if archivo.id == biggest.id else "deletable"
+
+    return "useful"
+
+
+def analyze_storage(archivos: list[Archivo]) -> dict[str, Any]:
+    """Analiza el almacenamiento de una simulación y clasifica archivos."""
+    categories: dict[str, list[dict]] = {"essential": [], "useful": [], "deletable": []}
+    totals: dict[str, int] = {"essential": 0, "useful": 0, "deletable": 0}
+
+    for archivo in archivos:
+        cat = classify_deletability(archivo, archivos)
+        entry = {
+            "id": archivo.id,
+            "nombre_archivo": archivo.nombre_archivo,
+            "extension": archivo.extension,
+            "tamano_bytes": archivo.tamano_bytes or 0,
+            "tipo": archivo.tipo,
+            "categoria": cat,
+        }
+        categories[cat].append(entry)
+        totals[cat] += archivo.tamano_bytes or 0
+
+    total = sum(totals.values())
+    return {
+        "total_bytes": total,
+        "essential_bytes": totals["essential"],
+        "useful_bytes": totals["useful"],
+        "deletable_bytes": totals["deletable"],
+        "deletable_files": sorted(categories["deletable"],
+                                  key=lambda f: f["tamano_bytes"], reverse=True),
+        "archivos": sorted(
+            categories["essential"] + categories["useful"] + categories["deletable"],
+            key=lambda f: f["tamano_bytes"], reverse=True,
+        ),
+    }

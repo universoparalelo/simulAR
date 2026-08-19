@@ -1158,6 +1158,59 @@ button:active {
 }
 
 /* ============================================
+   ANÁLISIS DE ALMACENAMIENTO (detalle.html)
+   ============================================ */
+
+.storage-summary {
+    display: flex;
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.storage-stat {
+    align-items: center;
+    display: flex;
+    font-size: 13px;
+    gap: var(--spacing-sm);
+}
+
+.storage-dot {
+    border-radius: 50%;
+    display: inline-block;
+    height: 10px;
+    width: 10px;
+}
+
+.storage-dot.essential { background-color: var(--color-text-info); }
+.storage-dot.useful { background-color: var(--color-text-success); }
+.storage-dot.deletable { background-color: var(--color-text-warning); }
+
+.storage-bar {
+    border-radius: var(--border-radius-md);
+    display: flex;
+    height: 12px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.storage-bar-segment {
+    min-width: 2px;
+    transition: width 0.3s ease;
+}
+
+.storage-bar-segment.essential { background-color: var(--color-text-info); }
+.storage-bar-segment.useful { background-color: var(--color-text-success); }
+.storage-bar-segment.deletable { background-color: var(--color-text-warning); }
+
+.storage-clean-message {
+    color: var(--color-text-success);
+    font-size: 13px;
+    padding: var(--spacing-md) 0;
+    text-align: center;
+}
+
+/* ============================================
    SCROLLBAR PERSONALIZADO
    ============================================ */
 
