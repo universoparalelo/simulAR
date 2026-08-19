@@ -71,9 +71,8 @@ _TOPOLOGY_EXTS = {".prmtop", ".pdb", ".gro", ".top", ".psf", ".mol2", ".fchk"}
 _TRAJECTORY_EXTS = {".nc", ".mdcrd", ".dcd", ".trr", ".xtc", ".crd"}
 
 
-def _find_topology(archivos: list[Archivo]) -> Optional[str]:
-    """Devuelve la ruta del archivo de topología más adecuado."""
-    # Prioridad: prmtop > pdb > gro > resto
+def _find_topology_candidates(archivos: list[Archivo]) -> list[str]:
+    """Devuelve los archivos de topología ordenados por prioridad."""
     priority = [".prmtop", ".pdb", ".gro", ".top", ".psf"]
     candidates: dict[str, str] = {}
     for a in archivos:
@@ -81,10 +80,7 @@ def _find_topology(archivos: list[Archivo]) -> Optional[str]:
         if ext in _TOPOLOGY_EXTS:
             candidates[ext] = a.nombre_archivo
 
-    for ext in priority:
-        if ext in candidates:
-            return candidates[ext]
-    return None
+    return [candidates[ext] for ext in priority if ext in candidates]
 
 
 def _find_trajectories(archivos: list[Archivo]) -> list[str]:
@@ -424,20 +420,18 @@ def analizar_simulacion(
     archivos: list[Archivo] = sim.archivos
 
     # Localizar archivos
-    topologia_rel = _find_topology(archivos)
+    topologia_candidates = _find_topology_candidates(archivos)
     trayectorias_rel = _find_trajectories(archivos)
     out_files = [
         a.nombre_archivo for a in archivos
         if (a.extension or "").lower() == ".out"
     ]
 
-    if topologia_rel is None:
+    if not topologia_candidates:
         raise ValueError(
             "No se encontró archivo de topología compatible "
             "(.prmtop, .pdb, .gro, .top, .psf)."
         )
-
-    topologia = os.path.join(sim.ruta_absoluta, topologia_rel)
 
     # Detectar modo: con trayectoria (MD) o sin ella (minimización / estructura estática)
     tiene_trayectoria = bool(trayectorias_rel)
@@ -456,30 +450,47 @@ def analizar_simulacion(
         ".gro": "GRO",
     }
 
-    # Cargar Universe (siempre necesario para propiedades estáticas)
-    if tiene_trayectoria:
-        universe = mda.Universe(topologia, *trayectorias)
-    else:
-        coord_priority = [".inpcrd", ".rst7", ".ncrst", ".rst", ".gro"]
-        coord_rel = None
-        for ext in coord_priority:
-            match = next(
-                (a.nombre_archivo for a in archivos if (a.extension or "").lower() == ext),
-                None,
-            )
-            if match:
-                coord_rel = match
-                coord_fmt = _MDA_FORMAT[ext]
-                break
+    # Cargar Universe probando cada topología en orden de prioridad
+    universe = None
+    topologia_rel = None
+    for candidate_rel in topologia_candidates:
+        candidate_path = os.path.join(sim.ruta_absoluta, candidate_rel)
+        try:
+            if tiene_trayectoria:
+                universe = mda.Universe(candidate_path, *trayectorias)
+            else:
+                coord_priority = [".inpcrd", ".rst7", ".ncrst", ".rst", ".gro"]
+                coord_rel = None
+                for ext in coord_priority:
+                    match = next(
+                        (a.nombre_archivo for a in archivos if (a.extension or "").lower() == ext),
+                        None,
+                    )
+                    if match:
+                        coord_rel = match
+                        coord_fmt = _MDA_FORMAT[ext]
+                        break
 
-        if coord_rel:
-            universe = mda.Universe(
-                topologia,
-                os.path.join(sim.ruta_absoluta, coord_rel),
-                format=coord_fmt,
-            )
-        else:
-            universe = mda.Universe(topologia)
+                if coord_rel:
+                    universe = mda.Universe(
+                        candidate_path,
+                        os.path.join(sim.ruta_absoluta, coord_rel),
+                        format=coord_fmt,
+                    )
+                else:
+                    universe = mda.Universe(candidate_path)
+            topologia_rel = candidate_rel
+            break
+        except Exception:
+            continue
+
+    if universe is None:
+        raise ValueError(
+            f"No se pudo cargar ninguna topología. "
+            f"Candidatos probados: {topologia_candidates}"
+        )
+
+    topologia = os.path.join(sim.ruta_absoluta, topologia_rel)
 
     n_frames = len(universe.trajectory)
     n_atomos = len(universe.atoms)
@@ -617,7 +628,8 @@ def analizar_simulacion_background(
         sim = db.query(Simulacion).filter_by(id=simulacion_id).first()
         if sim is not None:
             sim.estado_analisis = "error"
-            sim.analisis_error = str(exc)
+            error_msg = str(exc) or f"{type(exc).__name__}: {repr(exc)}"
+            sim.analisis_error = error_msg
             db.commit()
     finally:
         db.close()
