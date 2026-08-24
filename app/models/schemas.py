@@ -46,8 +46,17 @@ class SimulacionCreate(BaseModel):
     metadata: Optional[dict[str, Any]] = None
 
 
+class AnalisisMetricaConfig(BaseModel):
+    atom_selection: str = "backbone"
+    frame_start: Optional[int] = None
+    frame_end: Optional[int] = None
+
+
 class AnalisisRequest(BaseModel):
-    metricas: List[str] = ["rmsd", "rg"]
+    metricas: Dict[str, AnalisisMetricaConfig] = Field(default_factory=lambda: {
+        "rmsd": AnalisisMetricaConfig(atom_selection="backbone"),
+        "rg": AnalisisMetricaConfig(atom_selection="all"),
+    })
 
 
 class ScanDirectoryRequest(BaseModel):

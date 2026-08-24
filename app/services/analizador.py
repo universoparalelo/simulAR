@@ -237,26 +237,22 @@ run
 def calcular_rmsd(
     universe: "mda.Universe",
     select: str = "backbone",
+    frame_start: int | None = None,
+    frame_end: int | None = None,
 ) -> dict[str, Any]:
-    """Calcula RMSD cuadro a cuadro respecto al primer frame.
-
-    Devuelve:
-        {
-            "frames": [...],   # índices de frame
-            "tiempos_ps": [...],
-            "rmsd_angstrom": [...]
-        }
-    """
-    # Si la selección no tiene átomos, intenta con 'all'
+    """Calcula RMSD cuadro a cuadro respecto al primer frame del rango."""
     atoms = universe.select_atoms(select)
     if len(atoms) == 0:
         atoms = universe.select_atoms("all")
         select = "all"
 
-    rmsd_analysis = rms.RMSD(atoms, select=select)
-    rmsd_analysis.run()
+    start = frame_start or 0
+    stop = frame_end if frame_end is not None else len(universe.trajectory)
 
-    results = rmsd_analysis.results.rmsd  # shape (n_frames, 3): frame, time, rmsd
+    rmsd_analysis = rms.RMSD(atoms, select=select)
+    rmsd_analysis.run(start=start, stop=stop)
+
+    results = rmsd_analysis.results.rmsd
     return {
         "frames": results[:, 0].tolist(),
         "tiempos_ps": results[:, 1].tolist(),
@@ -267,22 +263,19 @@ def calcular_rmsd(
 def calcular_radio_de_giro(
     universe: "mda.Universe",
     select: str = "all",
+    frame_start: int | None = None,
+    frame_end: int | None = None,
 ) -> dict[str, Any]:
-    """Calcula el radio de giro cuadro a cuadro.
-
-    Devuelve:
-        {
-            "frames": [...],
-            "tiempos_ps": [...],
-            "rg_angstrom": [...]
-        }
-    """
+    """Calcula el radio de giro cuadro a cuadro."""
     atoms = universe.select_atoms(select)
     if len(atoms) == 0:
         atoms = universe.select_atoms("all")
 
+    start = frame_start or 0
+    stop = frame_end if frame_end is not None else len(universe.trajectory)
+
     frames, tiempos, rg_values = [], [], []
-    for ts in universe.trajectory:
+    for ts in universe.trajectory[start:stop]:
         frames.append(ts.frame)
         tiempos.append(float(ts.time))
         rg_values.append(float(atoms.radius_of_gyration()))
@@ -383,7 +376,7 @@ def calcular_propiedades_estaticas(universe: "mda.Universe") -> dict[str, Any]:
 def analizar_simulacion(
     db: Session,
     simulacion_id: int,
-    metricas: list[str] | None = None,
+    metricas: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     """
     Analiza una simulación y guarda las métricas en la DB.
@@ -391,15 +384,9 @@ def analizar_simulacion(
     Args:
         db: Sesión de base de datos.
         simulacion_id: ID de la simulación a analizar.
-        metricas: Lista de métricas a calcular. Por defecto: ["rmsd", "rg"].
-                  Valores posibles: "rmsd", "rg".
-
-    Returns:
-        Diccionario con los resultados y metadatos del análisis.
-
-    Raises:
-        ValueError: Si MDAnalysis no está disponible o faltan archivos necesarios.
-        FileNotFoundError: Si la ruta de la simulación no existe.
+        metricas: Dict de métrica → config. Cada config puede tener:
+                  atom_selection (str), frame_start (int|None), frame_end (int|None).
+                  Default: {"rmsd": {"atom_selection": "backbone"}, "rg": {"atom_selection": "all"}}
     """
     if not MDA_AVAILABLE:
         raise ValueError(
@@ -408,7 +395,10 @@ def analizar_simulacion(
         )
 
     if metricas is None:
-        metricas = ["rmsd", "rg"]
+        metricas = {
+            "rmsd": {"atom_selection": "backbone"},
+            "rg": {"atom_selection": "all"},
+        }
 
     sim: Optional[Simulacion] = db.query(Simulacion).filter_by(id=simulacion_id).first()
     if sim is None:
@@ -559,12 +549,17 @@ def analizar_simulacion(
 
     # --- RMSD (solo con trayectoria) ---
     if tiene_trayectoria and "rmsd" in metricas:
+        cfg = metricas["rmsd"]
+        sel = cfg.get("atom_selection", "backbone")
+        fs = cfg.get("frame_start")
+        fe = cfg.get("frame_end")
         try:
             if usar_cpp:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     rmsd_data = calcular_rmsd_cpptraj(topologia, trayectorias, tmpdir)
             else:
-                rmsd_data = calcular_rmsd(universe)
+                rmsd_data = calcular_rmsd(universe, select=sel, frame_start=fs, frame_end=fe)
+            rmsd_data["config"] = {"atom_selection": sel, "frame_start": fs, "frame_end": fe}
             _save_metrica(db, simulacion_id, "rmsd", rmsd_data)
             resultados["metricas_calculadas"].append("rmsd")
             vals = rmsd_data["rmsd_angstrom"]
@@ -578,12 +573,17 @@ def analizar_simulacion(
 
     # --- Radio de giro temporal (solo con trayectoria) ---
     if tiene_trayectoria and "rg" in metricas:
+        cfg = metricas["rg"]
+        sel = cfg.get("atom_selection", "all")
+        fs = cfg.get("frame_start")
+        fe = cfg.get("frame_end")
         try:
             if usar_cpp:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     rg_data = calcular_rg_cpptraj(topologia, trayectorias, tmpdir)
             else:
-                rg_data = calcular_radio_de_giro(universe)
+                rg_data = calcular_radio_de_giro(universe, select=sel, frame_start=fs, frame_end=fe)
+            rg_data["config"] = {"atom_selection": sel, "frame_start": fs, "frame_end": fe}
             _save_metrica(db, simulacion_id, "rg", rg_data)
             resultados["metricas_calculadas"].append("rg")
             vals = rg_data["rg_angstrom"]
@@ -604,15 +604,9 @@ def analizar_simulacion(
 
 def analizar_simulacion_background(
     simulacion_id: int,
-    metricas: list[str] | None = None,
+    metricas: dict[str, dict] | None = None,
 ) -> None:
-    """Corre `analizar_simulacion` en background con sesión propia.
-
-    Se usa desde un BackgroundTask de FastAPI, que se ejecuta después de que
-    la request ya respondió: la sesión inyectada por `Depends(get_db)` está
-    cerrada para entonces, así que acá se abre y cierra una sesión nueva.
-    Actualiza `estado_analisis`/`analisis_error` en la simulación al terminar.
-    """
+    """Corre `analizar_simulacion` en background con sesión propia."""
     from app.database import SessionLocal
 
     db = SessionLocal()

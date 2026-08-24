@@ -222,8 +222,11 @@ def create_app():
         sim.analisis_error = None
         db.commit()
 
+        metricas_dict = {
+            k: v.model_dump() for k, v in payload.metricas.items()
+        }
         background_tasks.add_task(
-            analizar_simulacion_background, simulacion_id, payload.metricas
+            analizar_simulacion_background, simulacion_id, metricas_dict
         )
         return {"simulacion_id": simulacion_id, "estado_analisis": "procesando"}
 
