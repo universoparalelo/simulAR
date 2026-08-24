@@ -307,6 +307,160 @@ body.modal-open {
     margin-top: var(--spacing-lg);
 }
 
+/* ============================================
+   MODAL DE ANÁLISIS
+   ============================================ */
+
+.analysis-overlay {
+    align-items: center;
+    background-color: rgba(33, 37, 41, 0.34);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: var(--spacing-xl);
+    position: fixed;
+    z-index: 1000;
+}
+
+.analysis-overlay[hidden] {
+    display: none;
+}
+
+.analysis-card {
+    background-color: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-lg);
+    max-height: min(760px, calc(100vh - 48px));
+    max-width: 640px;
+    overflow: auto;
+    padding: var(--spacing-xl);
+    width: min(100%, 640px);
+}
+
+.analysis-header {
+    align-items: flex-start;
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.analysis-label {
+    color: var(--color-text-info);
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: var(--spacing-xs);
+}
+
+.analysis-title {
+    color: var(--color-text-primary);
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.analysis-metric-card {
+    border: 1px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    margin-bottom: var(--spacing-md);
+    overflow: hidden;
+}
+
+.analysis-metric-header {
+    align-items: center;
+    background-color: var(--color-background-secondary);
+    border-bottom: 1px solid var(--color-border-tertiary);
+    cursor: pointer;
+    display: flex;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.analysis-metric-header input[type="checkbox"] {
+    accent-color: var(--color-text-info);
+    height: 16px;
+    width: 16px;
+}
+
+.analysis-metric-header label {
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    flex: 1;
+}
+
+.analysis-metric-header .metric-desc {
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.analysis-metric-body {
+    padding: var(--spacing-md);
+}
+
+.analysis-metric-body[hidden] {
+    display: none;
+}
+
+.analysis-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+}
+
+.analysis-field:last-child {
+    margin-bottom: 0;
+}
+
+.analysis-field > label {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.analysis-field select,
+.analysis-field input[type="text"],
+.analysis-field input[type="number"] {
+    background-color: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 13px;
+    min-height: 34px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    width: 100%;
+}
+
+.analysis-field select:focus,
+.analysis-field input:focus {
+    border-color: var(--color-text-info);
+    box-shadow: 0 0 0 3px var(--color-background-info);
+    outline: none;
+}
+
+.analysis-frame-range {
+    display: grid;
+    gap: var(--spacing-sm);
+    grid-template-columns: 1fr 1fr;
+}
+
+.analysis-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    justify-content: flex-end;
+    margin-top: var(--spacing-lg);
+}
+
+.analysis-config-tag {
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    margin-top: 2px;
+}
+
 .upload-status {
     border-radius: var(--border-radius-md);
     font-size: 13px;

@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=4" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=analysis-modal-1" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
@@ -175,10 +175,100 @@
 
         </div>
 
+        <!-- MODAL DE CONFIGURACIÓN DE ANÁLISIS -->
+        <div class="analysis-overlay" id="analysisOverlay" hidden onclick="if(event.target===this)closeAnalysisModal()">
+            <div class="analysis-card">
+                <div class="analysis-header">
+                    <div>
+                        <div class="analysis-label">CONFIGURAR ANÁLISIS</div>
+                        <div class="analysis-title">Seleccionar métricas y parámetros</div>
+                    </div>
+                    <button class="header-button" onclick="closeAnalysisModal()" style="padding:4px 8px;">
+                        <i class="ti ti-x"></i>
+                    </button>
+                </div>
+
+                <div class="analisis-banner danger" id="modalNoTrajWarning" style="display:none;">
+                    <i class="ti ti-alert-triangle"></i>
+                    Esta simulación no tiene archivo de trayectoria (.nc, .dcd, .xtc). RMSD y radio de giro temporal no están disponibles — solo se calcularán propiedades estáticas y energía de minimización.
+                </div>
+
+                <div class="analysis-metric-card">
+                    <div class="analysis-metric-header" onclick="toggleMetricBody('rmsd')">
+                        <input type="checkbox" id="chkRmsd" checked onclick="event.stopPropagation()">
+                        <label for="chkRmsd">RMSD <span class="metric-desc">— Root-Mean-Square Deviation</span></label>
+                    </div>
+                    <div class="analysis-metric-body" id="bodyRmsd">
+                        <div class="analysis-field">
+                            <label>Selección de átomos</label>
+                            <select id="selRmsd" onchange="handlePresetChange('rmsd')">
+                                <option value="backbone" selected>Backbone</option>
+                                <option value="name CA">C-alpha</option>
+                                <option value="protein">Proteína completa</option>
+                                <option value="all">Todos los átomos</option>
+                                <option value="__custom__">Selección personalizada...</option>
+                            </select>
+                        </div>
+                        <div class="analysis-field" id="customFieldRmsd" hidden>
+                            <label>Selección MDAnalysis</label>
+                            <input type="text" id="customRmsd" placeholder="ej: resid 1:50 and backbone">
+                        </div>
+                        <div class="analysis-field">
+                            <label>Rango de frames (opcional)</label>
+                            <div class="analysis-frame-range">
+                                <input type="number" id="frameStartRmsd" placeholder="Inicio" min="0">
+                                <input type="number" id="frameEndRmsd" placeholder="Fin" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-metric-card">
+                    <div class="analysis-metric-header" onclick="toggleMetricBody('rg')">
+                        <input type="checkbox" id="chkRg" checked onclick="event.stopPropagation()">
+                        <label for="chkRg">Radio de giro <span class="metric-desc">— Radius of Gyration</span></label>
+                    </div>
+                    <div class="analysis-metric-body" id="bodyRg">
+                        <div class="analysis-field">
+                            <label>Selección de átomos</label>
+                            <select id="selRg" onchange="handlePresetChange('rg')">
+                                <option value="backbone">Backbone</option>
+                                <option value="name CA">C-alpha</option>
+                                <option value="protein">Proteína completa</option>
+                                <option value="all" selected>Todos los átomos</option>
+                                <option value="__custom__">Selección personalizada...</option>
+                            </select>
+                        </div>
+                        <div class="analysis-field" id="customFieldRg" hidden>
+                            <label>Selección MDAnalysis</label>
+                            <input type="text" id="customRg" placeholder="ej: protein and not name H*">
+                        </div>
+                        <div class="analysis-field">
+                            <label>Rango de frames (opcional)</label>
+                            <div class="analysis-frame-range">
+                                <input type="number" id="frameStartRg" placeholder="Inicio" min="0">
+                                <input type="number" id="frameEndRg" placeholder="Fin" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-actions">
+                    <button class="header-button" onclick="closeAnalysisModal()">Cancelar</button>
+                    <button class="header-button primary" id="btnEjecutar" onclick="ejecutarAnalisis()">
+                        <i class="ti ti-player-play"></i>
+                        Ejecutar análisis
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <script>
             const simulationId = {{ simulation_id }};
             let pollInterval = null;
             const charts = {};
+            const TRAJ_EXTS = ['.nc', '.mdcrd', '.dcd', '.trr', '.xtc', '.crd'];
+            let hasTrayectoria = false;
 
             const METRIC_CONFIG = {
                 rmsd: { label: 'RMSD (Å)', xKey: 'tiempos_ps', yKey: 'rmsd_angstrom', xLabel: 'Tiempo (ps)', color: '#1971c2' },
@@ -238,6 +328,7 @@
 
                 const sim = await simRes.json();
                 const archivos = archivosRes.ok ? await archivosRes.json() : [];
+                hasTrayectoria = archivos.some(a => TRAJ_EXTS.includes((a.extension || '').toLowerCase()));
 
                 // metadata_json ya viaja como objeto (columna JSON nativa), no como string
                 const meta = sim.metadata_json || {};
@@ -300,14 +391,71 @@
                 return map[tipo] || '';
             }
 
-            async function analizarSimulacion() {
+            function analizarSimulacion() {
+                const warn = document.getElementById('modalNoTrajWarning');
+                const rmsdCard = document.getElementById('chkRmsd');
+                const rgCard = document.getElementById('chkRg');
+                if (!hasTrayectoria) {
+                    warn.style.display = 'flex';
+                    rmsdCard.checked = false;
+                    rmsdCard.disabled = true;
+                    rgCard.checked = false;
+                    rgCard.disabled = true;
+                } else {
+                    warn.style.display = 'none';
+                    rmsdCard.disabled = false;
+                    rgCard.disabled = false;
+                }
+                document.getElementById('analysisOverlay').hidden = false;
+            }
+
+            function closeAnalysisModal() {
+                document.getElementById('analysisOverlay').hidden = true;
+            }
+
+            function toggleMetricBody(metric) {
+                const body = document.getElementById('body' + metric.charAt(0).toUpperCase() + metric.slice(1));
+                body.hidden = !body.hidden;
+            }
+
+            function handlePresetChange(metric) {
+                const suffix = metric.charAt(0).toUpperCase() + metric.slice(1);
+                const sel = document.getElementById('sel' + suffix);
+                document.getElementById('customField' + suffix).hidden = sel.value !== '__custom__';
+            }
+
+            function getMetricConfig(metric) {
+                const suffix = metric.charAt(0).toUpperCase() + metric.slice(1);
+                const sel = document.getElementById('sel' + suffix);
+                const atomSel = sel.value === '__custom__'
+                    ? document.getElementById('custom' + suffix).value.trim() || 'all'
+                    : sel.value;
+                const fs = document.getElementById('frameStart' + suffix).value;
+                const fe = document.getElementById('frameEnd' + suffix).value;
+                const config = { atom_selection: atomSel };
+                if (fs !== '') config.frame_start = parseInt(fs, 10);
+                if (fe !== '') config.frame_end = parseInt(fe, 10);
+                return config;
+            }
+
+            async function ejecutarAnalisis() {
+                const metricas = {};
+                if (document.getElementById('chkRmsd').checked) metricas.rmsd = getMetricConfig('rmsd');
+                if (document.getElementById('chkRg').checked) metricas.rg = getMetricConfig('rg');
+
+                if (Object.keys(metricas).length === 0 && hasTrayectoria) {
+                    alert('Seleccioná al menos una métrica.');
+                    return;
+                }
+
+                closeAnalysisModal();
                 const btn = document.getElementById('btnAnalizar');
                 btn.disabled = true;
                 try {
                     const res = await fetch(`/api/simulaciones/${simulationId}/analizar`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ metricas: ['rmsd', 'rg'] }),
+                        body: JSON.stringify({ metricas }),
                     });
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}));
@@ -394,7 +542,16 @@
                     huboSeries = true;
                     const panel = document.createElement('div');
                     panel.className = 'detail-panel metric-chart-panel';
-                    panel.innerHTML = `<h3 class="section-title">${config.label}</h3><canvas></canvas>`;
+                    let configTag = '';
+                    if (datos.config) {
+                        const parts = [];
+                        if (datos.config.atom_selection) parts.push(datos.config.atom_selection);
+                        if (datos.config.frame_start != null || datos.config.frame_end != null) {
+                            parts.push(`Frames: ${datos.config.frame_start ?? 0}–${datos.config.frame_end ?? 'fin'}`);
+                        }
+                        if (parts.length) configTag = `<div class="analysis-config-tag">Selección: ${parts.join(' · ')}</div>`;
+                    }
+                    panel.innerHTML = `<h3 class="section-title">${config.label}</h3>${configTag}<canvas></canvas>`;
                     grid.appendChild(panel);
 
                     const puntos = datos[config.xKey].map((x, i) => ({ x, y: datos[config.yKey][i] }));
