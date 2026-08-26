@@ -11,16 +11,16 @@ El alcance actual cubre los módulos 1 y 2 del plan: gestión de simulaciones y 
 ## Comandos esenciales
 
 ```powershell
-# Activar entorno virtual (Windows)
-.venv\Scripts\Activate.ps1
+# Construir y levantar con Docker
+docker compose up --build -d
 
-# Instalar dependencias
-pip install -r requirements.txt
+# Ver logs del contenedor
+docker compose logs -f simular
 
-# Levantar servidor de desarrollo
-uvicorn app.main:app --reload
+# Parar el contenedor
+docker compose down
 
-# Verificar que la app importa correctamente
+# Verificar que la app importa correctamente (sin Docker)
 .venv\Scripts\python.exe -c "from app.main import app; print('OK')"
 ```
 
@@ -82,7 +82,7 @@ Pasos para apuntar a Supabase:
 2. Copiar `.env.example` a `.env` y pegar ese string en `DATABASE_URL`, reemplazando `[PASSWORD]` por la contraseña real de la DB.
    - **Ojo con caracteres especiales en la contraseña**: si Supabase generó una contraseña con `@` (u otro carácter reservado de URL), hay que percent-encodearlo (`@` → `%40`) o el parser corta el connection string en el lugar equivocado y arma un host inválido. Verificar con `sqlalchemy.engine.url.make_url(DATABASE_URL)` y chequear que `.host` sea el esperado antes de asumir que anda.
 3. Instalar el driver: `psycopg2-binary` ya está en `requirements.txt`. **Importante en esta máquina**: el `pip`/`python` que resuelve la terminal por default es el de Anaconda, no el del `.venv` del proyecto — instalar siempre con la ruta explícita (`.venv\Scripts\python.exe -m pip install ...`), si no el paquete queda en el entorno equivocado y `create_engine()` falla con `ModuleNotFoundError: No module named 'psycopg2'` aunque `pip show` "lo encuentre".
-4. Correr la app (`uvicorn app.main:app --reload`) una vez: el evento `startup` llama a `init_db()`, que crea las tablas en Supabase con `Base.metadata.create_all()` (no hay Alembic en el proyecto).
+4. Correr la app (`docker compose up --build -d`) una vez: el evento `startup` llama a `init_db()`, que crea las tablas en Supabase con `Base.metadata.create_all()` (no hay Alembic en el proyecto).
 5. `metadata_json` y `valores_tiempo_json` usan `JSON().with_variant(JSONB(), "postgresql")` (ver `simulacion.py`/`metrica.py`): siguen siendo `TEXT`/`JSON` genérico en SQLite, pero se crean como `jsonb` real en Postgres.
 6. Para volver a desarrollar local, comentar/borrar `DATABASE_URL` en `.env` — el default cae de nuevo a `sqlite:///./simular_local.db`.
 

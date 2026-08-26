@@ -93,15 +93,22 @@ Para entender qué programas se deben automatizar u optimizar, es fundamental id
 | ---| ---| ---| --- |
 | <br>AMBER / sander | Motor de Simulación (Dinámica Molecular) | `.prmtop` (Topología) , `.inpcrd` / `.rst` (Coordenadas) , `.mdin` (Control) | `.nc` / `.mdcrd` (Trayectorias binarias), `.mdout` (Log de energías en texto) |
 | <br>Gaussian / GAMESS | Motores de Cálculo (Química Cuántica) | <br>`.com`, `.inp`, `.txt` (Configuración y coordenadas iniciales) | <br>`.log` / `.out` (Texto plano con energías y frecuencias) , `.chk` / `.dat` (Checkpoints y matrices binarias) |
-| <br>cpptraj (AmberTools) | Procesamiento de Datos y Análisis de Trayectorias | <br>`.prmtop` (Topología) , `.nc` / `.mdcrd` (Trayectorias) | Archivos de datos estructurados (`.dat`, `.txt`) con valores numéricos filtrados, nuevas trayectorias reducidas |
+| <br>GROMACS | Motor de Simulación (Dinámica Molecular) | `.gro` (Coordenadas) , `.top` (Topología) , `.mdp` (Parámetros) | `.xtc` / `.trr` (Trayectorias binarias), `.log` (Log de energías), `.edr` (Energía binaria) |
+| <br>MDAnalysis (Python) | Procesamiento de Datos y Análisis de Trayectorias | Topologías (`.prmtop`, `.pdb`, `.gro`, `.top`) + Trayectorias (`.nc`, `.dcd`, `.xtc`) | Arrays numéricos en memoria (RMSF, RMSD, Rg) serializados como JSON en la DB |
+| <br>cpptraj (AmberTools) | Procesamiento de Datos y Análisis de Trayectorias (trayectorias > 200 MB) | <br>`.prmtop` (Topología) , `.nc` / `.mdcrd` (Trayectorias) | Archivos de datos estructurados (`.dat`, `.txt`) con valores numéricos filtrados, nuevas trayectorias reducidas |
 | VMD / PyMOL | Visualizadores Estructura Molecular | <br>`.pdb` (Estático), `.prmtop` + `.nc` (Dinámico) | Animaciones ("Películas" de la simulación), renders de alta calidad, mapas de densidad de carga. |
 
+> **Nota de implementación:** En la versión actual de simulAR, el motor principal de análisis es **MDAnalysis** (librería de Python integrada directamente en el backend). cpptraj se usa como fallback automático para trayectorias que superan los 200 MB, ya que es más eficiente con archivos grandes. La detección del motor es transparente para el usuario.
+
 ## 3\. "Métricas" Clave Extraídas (¿Qué busca el investigador?)
-Dado que la simulación no devuelve respuestas directas, los investigadores ejecutan scripts de análisis (principalmente a través de `cpptraj` o scripts propios en Python) para extraer las siguientes métricas indirectas:
+Dado que la simulación no devuelve respuestas directas, los investigadores ejecutan scripts de análisis (principalmente a través de MDAnalysis o `cpptraj`) para extraer las siguientes métricas indirectas:
 ### A. Métricas de Estabilidad y Dinámica Estructural
-*   RMSD (Root-Mean-Square Deviation): Mide cuánto se deforma o se aleja la proteína de su estructura inicial a lo largo del tiempo. Es la métrica analítica número uno para saber si la simulación es estable o si el sistema "explotó".
-*   RMSF (Root-Mean-Square Fluctuation): Evalúa qué partes o aminoácidos específicos de la proteína son los que más se mueven o tienen mayor flexibilidad durante la simulación.
-*   Radio de Giro ($R\_g$): Mide el grado de compactación de la estructura molecular. Sirve para determinar si la proteína se mantiene plegada o si se está desplegando en el agua.
+*   **RMSF (Root-Mean-Square Fluctuation):** Evalúa qué partes o residuos específicos de la proteína son los que más se mueven o tienen mayor flexibilidad durante la simulación. Es la **métrica principal** del laboratorio QuITEx y se calcula por defecto al analizar una simulación con trayectoria.
+*   RMSD (Root-Mean-Square Deviation): Mide cuánto se deforma o se aleja la proteína de su estructura inicial a lo largo del tiempo. Sirve para saber si la simulación es estable o si el sistema "explotó". Se ofrece como análisis extra opcional.
+*   Radio de Giro ($R\_g$): Mide el grado de compactación de la estructura molecular. Sirve para determinar si la proteína se mantiene plegada o si se está desplegando en el agua. Se ofrece como análisis extra opcional.
+### A-bis. Métricas de Simulaciones sin Trayectoria (Minimización)
+*   Energía de minimización: Para simulaciones que no producen trayectoria temporal (solo archivos `.mdin`, `.out`, `.rst`), el sistema parsea la curva de energía del archivo `.out` con regex y grafica la convergencia energética paso a paso.
+*   Propiedades estáticas: Número de residuos (moléculas), radio de giro estático y masa total de la estructura cargada.
 ### B. Métricas de Interacción Química
 *   Análisis de Puentes de Hidrógeno: Cuenta la cantidad y persistencia de las interacciones de hidrógeno formadas y destruidas a lo largo del tiempo (clave para estudiar cómo se une un fármaco a una proteína).
 *   Energía Libre de Unión (MM/PBSA o MM/GBSA): Cálculos post-procesamiento que toman las trayectorias para estimar numéricamente la fuerza con la que se unen dos moléculas.
@@ -109,9 +116,20 @@ Dado que la simulación no devuelve respuestas directas, los investigadores ejec
 *   Optimización de Geometría: Distancias y ángulos de enlace exactos del estado de mínima energía de una molécula.
 *   Frecuencias Vibracionales: Valores numéricos que confirman si la estructura hallada es un mínimo real o un estado de transición (punto de silla).
 *   Energías de Orbitales (HOMO / LUMO): Valores que definen la reactividad química de la molécula analizada.
+### D. Configuración de Análisis por Métrica
+El usuario puede configurar cada métrica individualmente al momento de ejecutar el análisis:
+*   **Selección de átomos:** C-alpha (un valor por residuo), Backbone, Proteína completa, Todos los átomos, o una expresión MDAnalysis personalizada (ej: `name CA and resid 1:100`).
+*   **Rango temporal:** Frame de inicio y fin opcionales para analizar un segmento específico de la trayectoria.
+*   **Múltiples análisis:** Se pueden agregar múltiples gráficos del mismo tipo con rangos de residuos o temporales distintos. Cada gráfico muestra su configuración (selección de átomos, rango de residuos, rango de frames) como etiqueta visible.
+
+### E. Organización de Resultados en la Vista de Detalle
+Los resultados de análisis se organizan en dos secciones:
+*   **Métricas analizadas:** RMSF (métrica principal), propiedades estáticas y energía de minimización. Botón para agregar gráficos RMSF adicionales con distintas configuraciones.
+*   **Análisis extras:** RMSD y Radio de giro. Botón para agregar análisis extras. Cada gráfico individual puede eliminarse de forma independiente.
+
 ## 4\. Consideraciones para la Futura Optimización del Flujo
 Teniendo claro que el cuello de botella está en el procesamiento y la traducción de estos archivos, cualquier propuesta de modernización para el laboratorio debería apuntar a:
-1. Automatizar la extracción inicial: Crear scripts que, apenas termine una simulación con `sander`/`pmemd`, ejecuten automáticamente un set estándar de `cpptraj` para escupir los gráficos de RMSD y Radio de Giro.
+1. Automatizar la extracción inicial: Crear scripts que, apenas termine una simulación con `sander`/`pmemd`, ejecuten automáticamente un set estándar de análisis para escupir los gráficos de RMSF, RMSD y Radio de Giro.
 2. Reducción de espacio mediante filtrado: Las trayectorias crudas (`.nc`) pesan decenas de gigabytes porque guardan cada molécula de agua de la caja. Una herramienta clave de `cpptraj` es quitar el agua sobrante y guardar una trayectoria "limpia y liviana", que es la que el usuario finalmente se descarga a su PC local para armar los videos de las moléculas.
 
 # Arquitectura
@@ -122,52 +140,65 @@ Teniendo claro que el cuello de botella está en el procesamiento y la traducci�
 Al utilizar FastAPI, podemos aplicar un patrón arquitectónico limpio separando las responsabilidades en capas muy bien definidas:
 
 ```cs
-mi_proyecto/
+simulAR/
+│
+├── Dockerfile               # Imagen Docker para despliegue
+├── docker-compose.yml        # Orquestación del contenedor con volúmenes
+├── requirements.txt          # Dependencias Python (FastAPI, MDAnalysis, etc.)
 │
 ├── app/
-│   ├── database.py          # Configuración y conexión a SQLite
-│   ├── main.py              # Punto de entrada de FastAPI y rutas principales
+│   ├── main.py              # Punto de entrada de FastAPI: todas las rutas HTTP y montaje de static
+│   ├── database.py          # Engine SQLAlchemy, SessionLocal, Base declarativa, init_db()
 │   │
 │   ├── models/              # Modelos de datos (Tablas de SQLAlchemy)
-│   │   ├── simulación.py
-│   │   └── métrica.py
+│   │   ├── simulacion.py    # ORM: Simulacion (1) → Archivo (N)
+│   │   ├── metrica.py       # ORM: ResultadoMetrica (N) → Simulacion (1)
+│   │   └── schemas.py       # Pydantic schemas para request/response
+│   │
+│   ├── repositories/        # Capa CRUD pura (sin lógica de negocio)
+│   │   ├── simulacion_repo.py
+│   │   ├── archivo_repo.py
+│   │   └── metrica_repo.py
 │   │
 │   ├── services/            # LÓGICA DE NEGOCIO (Python puro)
-│   │   ├── escáner.py       # Módulo 1: Escaneo de directorios y metadata
-│   │   └── analizador.py    # Módulo 2: Pipeline de cpptraj y extracción de datos
+│   │   ├── escaner.py       # Módulo 1: Escaneo de directorios, detección de software, registro en DB
+│   │   └── analizador.py    # Módulo 2: Pipeline MDAnalysis/cpptraj: RMSF, RMSD, Rg, energía de minimización
 │   │
 │   ├── templates/           # CAPA DE INTERFAZ (UI)
-│   │   ├── base.html        # Estructura común (Navbar, Sidebar)
-│   │   ├── dashboard.html   # Listado y estado del almacenamiento
-│   │   └── detalle.html     # Visualización interactiva de RMSD / Radio de Giro
-│   └── static/              # Estilos CSS y scripts JS (Gráficos)
+│   │   ├── dashboard.html   # Vista principal (lista de simulaciones, filtros, paginación, carga/upload)
+│   │   └── detalle.html     # Vista de detalle: métricas analizadas, análisis extras, gráficos Chart.js
+│   └── static/
+│       ├── dashboard.css    # Estilos compartidos (CSS propio con variables CSS, sin Tailwind)
+│       └── UTN_logo.jpg     # Logo UTN servido también como favicon
 ```
 
+> **Nota sobre CSS:** Se usa CSS propio con variables CSS para colores/espaciado/tipografía en lugar de Tailwind CSS. La decisión es consciente: Tailwind agregaría una dependencia de build tooling (Node, PostCSS) a un proyecto que es 100% Python y corre local en la máquina del laboratorio. La superficie de UI es chica (dos vistas) y no justifica la complejidad adicional.
+
 ## 2\. Flujo de Datos y Separación UI / Lógica
-Para cumplir con las buenas prácticas de ingeniería de software, la interfaz de usuario no debe saber _cómo_ se calcula un RMSD, y el motor de análisis no debe saber _cómo_ se renderiza una página web.
+Para cumplir con las buenas prácticas de ingeniería de software, la interfaz de usuario no debe saber _cómo_ se calcula un RMSF, y el motor de análisis no debe saber _cómo_ se renderiza una página web.
 
 ```scss
-[ Navegador Web ] (HTML/JS)
+[ Navegador Web ] (HTML/JS/Chart.js)
        │  ▲
-       │  │  Peticiones HTTP (GET/POST)
+       │  │  Peticiones HTTP (GET/POST) — API REST JSON
        ▼  │
-[ Rutas de FastAPI (main.py) ]  <───> [ Base de Datos (SQLite) ]
+[ Rutas de FastAPI (main.py) ]  <───> [ Base de Datos (SQLite / Supabase) ]
        │  ▲
        │  │  Invoca funciones de negocio y pasa datos limpios
        ▼  │
 [ Capa de Servicios (Services) ]
        │
-       ├─► escáner.py    ──► (Explora el Sistema de Archivos Local)
-       └─► analizador.py ──► (Ejecuta subprocesos de cpptraj en segundo plano)
+       ├─► escaner.py    ──► (Explora el Sistema de Archivos Local, detecta software)
+       └─► analizador.py ──► (MDAnalysis en proceso / cpptraj vía subprocess para archivos > 200 MB)
 ```
 
 ### Paso a paso del flujo de información:
-1. Petición del Usuario: El investigador entra a la web local ([`http://localhost:8000`](http://localhost:8000)) y hace clic en _"Escanear Carpeta de Simulaciones"_.
-2. Controlador (FastAPI): Recibe la ruta del directorio local enviada por el formulario.
-3. Capa de Lógica (Módulo 1 - Escáner): Un script de Python recorre la ruta usando `os.walk`, detecta estructuras válidas (archivos `.prmtop`, `.nc`, `.log`) y extrae los metadatos (tamaño, fecha).
-4. Persistencia: La lógica guarda este registro en la base de datos local SQLite.
-5. Capa de Lógica (Módulo 2 - Analizador): Si el usuario solicita analizar, el servicio invoca a `cpptraj` en segundo plano mediante el módulo `subprocess` de Python, procesa el output numérico generado (`.dat`) y guarda los vectores de RMSD o Radio de Giro en la base de datos.
-6. Renderizado (UI): FastAPI toma los datos de la base de datos, los inyecta en la plantilla Jinja2 (`detalle.html`) y Chart.js dibuja de manera interactiva las curvas científicas en la pantalla del usuario.
+1. **Registro de simulación:** El investigador entra a la web local ([`http://localhost:8000`](http://localhost:8000)) y puede: (a) pegar una ruta local para importar, (b) subir archivos desde el navegador vía drag & drop, o (c) escanear una carpeta raíz para detectar automáticamente subcarpetas que sean simulaciones.
+2. **Controlador (FastAPI):** Recibe la ruta o los archivos y delega al escáner.
+3. **Capa de Lógica (Módulo 1 - Escáner):** Recorre la ruta usando `os.walk`, clasifica archivos por extensión, detecta el software (AMBER, GAMESS, Gaussian, GROMACS) inspeccionando extensiones y primeras líneas de los `.log`/`.inp`, y extrae metadatos (tamaño total, archivos por tipo, fecha de última modificación).
+4. **Persistencia:** Guarda el registro en las tablas `Simulacion` y `Archivo` de la base de datos.
+5. **Capa de Lógica (Módulo 2 - Analizador):** Cuando el usuario solicita analizar, FastAPI marca `estado_analisis = "procesando"` y encola el trabajo con `BackgroundTasks` (responde 202 inmediato). En background, `analizador.py` abre su propia sesión de DB, carga un `mda.Universe` con MDAnalysis, calcula las métricas configuradas (RMSF, RMSD, Rg) y persiste los resultados como JSON en `ResultadoMetrica`. Para trayectorias > 200 MB, usa cpptraj automáticamente si está disponible.
+6. **Renderizado (UI):** El frontend hace `fetch` a la API REST, obtiene los datos JSON y Chart.js dibuja los gráficos de línea interactivos. Mientras el análisis está en curso, un `setInterval` de 3 segundos hace polling hasta que `estado_analisis` cambia a `completado` o `error`.
 ## 3\. Adaptación de los Módulos a la nueva Arquitectura
 ### Módulo 1: Gestión de Simulaciones (Local + Web)
 *   En la Lógica (Backend): Python aprovecha que corre en la misma máquina que los archivos. Al recibir comandos del navegador, lee directamente el disco local.
@@ -193,9 +224,15 @@ Esta propuesta no altera los objetivos core de tu PPS ni las horas estimadas (20
 ### Pydantic
 *   Definición: Librería de validación de datos y gestión de configuraciones basada en anotaciones de tipos de Python.
 *   Justificación: Garantiza que los datos que viajan desde la interfaz web (como la ruta de una carpeta copiada por el usuario) cumplan con el formato estructurado correcto antes de que pasen a los módulos de análisis, evitando excepciones o errores en tiempo de ejecución.
+### MDAnalysis
+*   Definición: Librería de Python para el análisis de simulaciones de dinámica molecular. Soporta formatos de AMBER, GROMACS, CHARMM, NAMD y otros.
+*   Justificación: Es el motor principal de análisis en simulAR. Permite cargar topologías y trayectorias directamente en Python (sin depender de binarios externos como cpptraj), calcular RMSF, RMSD y radio de giro con una API de alto nivel, y operar sobre selecciones de átomos flexibles. Al estar integrado como librería Python, el pipeline de análisis corre en el mismo proceso que FastAPI (vía `BackgroundTasks`), sin generar archivos temporales intermedios.
 ### Subprocess (Módulo nativo de Python)
 *   Definición: Módulo estándar de Python que permite generar nuevos procesos, conectarse a sus tuberías de entrada/salida/error y obtener sus códigos de retorno.
-*   Justificación: Crucial para el Módulo 2 (Analizador). Es la herramienta informática que permite a Python "tipear en la consola oculta" y ejecutar los comandos de las herramientas científicas del laboratorio (como `cpptraj` de AmberTools) , capturando sus outputs numéricos directos.
+*   Justificación: Se usa como fallback para cpptraj cuando las trayectorias superan los 200 MB, ya que cpptraj es más eficiente con archivos grandes. El sistema detecta automáticamente el tamaño y elige el motor adecuado.
+### Docker
+*   Definición: Plataforma de contenedorización que empaqueta la aplicación junto con todas sus dependencias en una imagen reproducible.
+*   Justificación: simulAR incluye dependencias científicas complejas (MDAnalysis, HDF5, NetCDF) que son difíciles de instalar consistentemente entre máquinas. El `Dockerfile` instala las librerías de sistema necesarias (`libhdf5-dev`, `libnetcdf-dev`) y las dependencias Python en un entorno aislado. `docker-compose.yml` orquesta el contenedor con volúmenes para persistir la base de datos y montar las carpetas de simulaciones del host como read-only.
 ## 2\. Capa de Base de Datos y Persistencia
 ### SQLite
 *   Definición: Un motor de base de datos relacional SQL autónomo, empotrado (embebido), de alta confiabilidad y que no requiere un servidor independiente.
@@ -204,9 +241,9 @@ Esta propuesta no altera los objetivos core de tu PPS ni las horas estimadas (20
 *   Definición: Un Kit de herramientas SQL y un mapeador objeto-relacional (ORM) para Python.
 *   Justificación: Permite interactuar con las tablas de SQLite utilizando clases y objetos de Python puros en lugar de escribir consultas SQL manuales. Esto acelera drásticamente el desarrollo de la capa de acceso a datos (CRUD de simulaciones y métricas).
 ## 3\. Capa de Interfaz de Usuario (Front-end)
-### HTML5 y CSS3 (Tailwind CSS)
-*   Definición: HTML5 es el lenguaje de marcado estándar para estructurar páginas web; Tailwind CSS es un framework de CSS orientado a utilidades para diseñar interfaces rápidamente.
-*   Justificación: Reemplazan los componentes rígidos de escritorio por un diseño web moderno, responsivo y estético. Tailwind permite estructurar visualmente un _Dashboard_ limpio para el laboratorio sin sobrecargar el código de la interfaz.
+### HTML5 y CSS3 (CSS propio con variables CSS)
+*   Definición: HTML5 es el lenguaje de marcado estándar para estructurar páginas web; CSS3 con custom properties (variables CSS) permite definir un sistema de diseño consistente sin dependencias de build.
+*   Justificación: Se usa CSS propio (`dashboard.css`) con variables CSS para colores, espaciado y tipografía en lugar de Tailwind CSS. La decisión es consciente: Tailwind agregaría una dependencia de build tooling (Node, PostCSS/CLI) a un proyecto que es 100% Python y corre local en la máquina del laboratorio. La superficie de UI es chica (dos vistas: dashboard y detalle) y no justifica la complejidad adicional.
 ### Jinja2
 *   Definición: Un motor de plantillas de diseño rápido, expresivo y extensible para Python.
 *   Justificación: Integrado por defecto con FastAPI. Permite "inyectar" los datos provenientes de SQLite (como la lista de simulaciones detectadas o el tamaño de los archivos) directamente dentro del código HTML antes de enviarlo al navegador.
@@ -218,9 +255,9 @@ El cambio arquitectónico implica descartar ciertas herramientas mencionadas ori
 ### PySide6 / Qt (Reemplazado por FastAPI + HTML/Jinja2)
 *   ¿Qué es? El binding oficial de Python para la biblioteca gráfica multiplataforma Qt, usado para aplicaciones de escritorio nativas.
 *   Por qué NO se utiliza: PySide6 requiere instalar librerías gráficas pesadas en el sistema operativo y su curva de diseño para interfaces fluidas es elevada. Al cambiar a un entorno web con FastAPI, la interfaz se independiza del sistema operativo (corre idéntico en Windows 11 o Linux/WSL) y se vuelve escalable: si el laboratorio decide centralizar la herramienta en un servidor web del anexo, no habrá que reinstalar código en las terminales de los alumnos.
-### Matplotlib (Reemplazado por Chart.js / Plotly en Front-end)
+### Matplotlib (Disponible en backend, no usado en la UI)
 *   ¿Qué es? Una librería clásica de Python para la generación de gráficos estáticos, animados e interactivos.
-*   Por qué NO se utiliza: Aunque Matplotlib es excelente para scripts científicos, al integrarse con aplicaciones visuales tiende a exportar los gráficos como imágenes estáticas (`.png`) o requiere incrustar ventanas de dibujo complejas. Delegar los gráficos a Chart.js o Plotly en el Front-end permite que el procesamiento del servidor web se concentre puramente en los datos numéricos crudos, logrando una experiencia de usuario mucho más fluida, moderna e interactiva.
+*   Estado actual: Sigue instalada como dependencia (la requieren MDAnalysis y SciPy), pero los gráficos del usuario se delegan a Chart.js 4 (CDN) en el frontend. Esto permite que el servidor se concentre en los datos numéricos crudos y el navegador renderice gráficos interactivos (zoom, hover, tooltips) sin generar imágenes estáticas.
 
 # Modelo de datos
 
@@ -228,11 +265,12 @@ El cambio arquitectónico implica descartar ciertas herramientas mencionadas ori
 La estructura elegida es un Modelo Híbrido Estructurado. En lugar de crear millones de filas en una tabla de series temporales, agrupamos los vectores de datos calculados por `cpptraj` dentro de un único registro estructurado en formato de texto o binario nativo.
 El esquema de tablas queda de la siguiente manera:
 *   Tabla `Simulacion`: Almacena la cabecera de la corrida científica.
-    *   _Campos:_ `id` (PK), `nombre`, `ruta_absoluta` (clave para encontrarla localmente y borrar archivos), `software` (AMBER, Gaussian, etc.), `fecha_registro`, `metadata_json`.
+    *   _Campos:_ `id` (PK), `nombre`, `ruta_absoluta` (clave para encontrarla localmente y borrar archivos), `software` (AMBER, Gaussian, GROMACS, GAMESS, o None), `fecha_registro`, `metadata_json` (JSON con `total_bytes`, `archivos_por_tipo`, `fecha_modificacion_mas_reciente`), `estado_analisis` (`pendiente` | `procesando` | `completado` | `error`), `analisis_error` (mensaje de error si falló).
 *   Tabla `Archivo`: Mapea de forma relacional (1 a N con Simulación) los archivos detectados en el disco.
-    *   _Campos:_ `id` (PK), `simulacion_id` (FK), `nombre_archivo`, `extension`, `tamaño_bytes`, `tipo` (Input / Output / Trajectory).
+    *   _Campos:_ `id` (PK), `simulacion_id` (FK), `nombre_archivo` (ruta relativa a `ruta_absoluta`), `extension`, `tamano_bytes`, `tipo` (input / output / trajectory / restart / other).
 *   Tabla `Resultado_Metrica`: Almacena el "jugo" extraído de los análisis para graficar.
-    *   _Campos:_ `id` (PK), `simulacion_id` (FK), `tipo_metrica` (RMSD, Radio de Giro, etc.), `valores_tiempo_json` (campo `TEXT` en desarrollo / `JSONB` en producción). Contiene el vector completo (ej: `[0.15, 0.22, 0.31, ...]`).
+    *   _Campos:_ `id` (PK), `simulacion_id` (FK), `tipo_metrica` (`rmsf`, `rmsd`, `rg`, `propiedades_estaticas`, `energia_minimizacion`), `valores_tiempo_json` (campo `JSON` en SQLite / `JSONB` nativo en PostgreSQL). Contiene los vectores completos junto con la configuración del análisis (selección de átomos, rango de frames).
+    *   _Múltiples registros por tipo:_ Puede haber varios `ResultadoMetrica` del mismo `tipo_metrica` para una misma simulación, cada uno con configuración distinta (ej: dos RMSF con rangos de residuos diferentes). Esto permite al usuario acumular gráficos comparativos.
 ## Tecnologías a Utilizar
 ### En Desarrollo (Entorno Local y de Pruebas):
 *   Backend: FastAPI (Python) corriendo en `localhost`.
@@ -284,27 +322,37 @@ El objetivo de esta etapa es dejar listo tu espacio de trabajo y el "molde" dond
 ## Etapa 2: Módulos de Lógica y Pipeline Científico Local (Estimación: 65 horas)
 Aquí programarás el "motor" de tu aplicación. Todo corre de forma local en la máquina del laboratorio para tener acceso directo y veloz a los discos duros y archivos pesados.
 *   Fase 2.1: Módulo 1 - Escaneo y Catalogación de Archivos
-    *   Desarrollar la lógica con `os.walk` para rastrear las carpetas de simulación proporcionadas por el usuario.
-    *   Filtrar e identificar archivos críticos de Dinámica Molecular (topologías `.prmtop`, trayectorias `.nc`, archivos `.log`).
-    *   Extraer metadatos físicos (tamaño en bytes, nombre, extensiones) e insertarlos en las tablas `Simulacion` y `Archivo`.
+    *   Desarrollar la lógica con `os.walk` para rastrear las carpetas de simulación proporcionadas por el usuario (importación por ruta, upload desde browser, o escaneo recursivo de una carpeta raíz).
+    *   Clasificar archivos por extensión en tipos: `input`, `output`, `trajectory`, `restart`, `other`.
+    *   Detectar el software utilizado (AMBER, GAMESS, Gaussian, GROMACS) inspeccionando extensiones y primeras líneas de los `.log`/`.inp`.
+    *   Extraer metadatos físicos (tamaño total, archivos por tipo, fecha de última modificación) e insertarlos en las tablas `Simulacion` y `Archivo`.
 *   Fase 2.2: Módulo 2 - Pipeline de Extracción Analítica
-    *   Implementar el llamado a tareas en segundo plano (_Background Tasks_) en FastAPI para no congelar la aplicación.
-    *   Utilizar el módulo `subprocess` de Python para automatizar la ejecución de `cpptraj` sobre las trayectorias pesadas del disco.
-    *   Escribir los scripts de análisis dinámicos (comandos para calcular RMSD y Radio de Giro).
-*   Fase 2.3: Módulo 3 - Parseo, Serialización y Optimización
-    *   Programar el lector que procesa los archivos `.dat` temporales generados por `cpptraj`.
-    *   Transformar las columnas de texto en vectores/arrays puros de Python (ej. `[0.12, 0.23, ...]`).
-    *   Guardar dichos vectores en la tabla `Resultado_Metrica` y ejecutar la limpieza de archivos temporales.
-    *   Implementar la función de Borrado en Cascada y eliminación física de archivos redundantes en el disco local para cumplir con el objetivo de optimización de almacenamiento.
+    *   Implementar el llamado a tareas en segundo plano (_Background Tasks_) en FastAPI para no congelar la aplicación (respuesta 202 inmediata + polling desde el frontend).
+    *   Usar MDAnalysis como motor principal: carga de `Universe` con topología + trayectoria, cálculo de RMSF (`rms.RMSF`), RMSD (`rms.RMSD`), radio de giro (`radius_of_gyration()`).
+    *   Fallback automático a cpptraj (vía `subprocess`) para trayectorias > 200 MB, con detección de disponibilidad nativa y WSL.
+    *   Parsear la curva de energía de minimización de archivos `.out` de AMBER con regex para simulaciones sin trayectoria.
+    *   Calcular propiedades estáticas (número de residuos, radio de giro, masa total) para toda simulación independientemente de si tiene trayectoria.
+*   Fase 2.3: Módulo 3 - Serialización y Persistencia
+    *   Serializar los arrays de MDAnalysis/cpptraj como JSON (con la configuración usada: selección de átomos, rango de frames) y guardarlos en `ResultadoMetrica`.
+    *   Los campos JSON usan `JSON().with_variant(JSONB(), "postgresql")` para ser `TEXT` en SQLite y `JSONB` indexable en PostgreSQL.
+    *   Soporte para múltiples registros del mismo tipo de métrica por simulación (el usuario puede agregar gráficos con distintas configuraciones).
+    *   Implementar el Borrado en Cascada en las relaciones de SQLAlchemy y la eliminación individual de métricas vía API REST.
 ## Etapa 3: Interfaz de Usuario (UI) y Visualización Interactiva (Estimación: 50 horas)
 En esta etapa le darás forma visual al sistema, permitiendo que los investigadores interactúen con el backend y vean los gráficos científicos de forma fluida.
 *   Fase 3.1: Vistas y Renderizado Dinámico
     *   Configurar Jinja2 en FastAPI para servir plantillas HTML estructuradas.
-    *   Diseñar la maquetación visual (Panel de control, buscador de simulaciones, indicador de carga de tareas) utilizando Tailwind CSS.
+    *   Diseñar la maquetación visual (Panel de control, buscador de simulaciones, carga por upload) utilizando CSS propio con variables CSS.
+    *   Implementar dashboard con filtros por estado y software, paginación, y cards de simulación.
+    *   Implementar vista de detalle con información general, timeline de estado, y tablas de archivos.
 *   Fase 3.2: Módulo de Graficación (Front-end)
-    *   Crear los endpoints en FastAPI que devuelven los vectores numéricos en formato JSON de manera ultra veloz.
-    *   Integrar Chart.js (o Plotly) en las plantillas HTML.
-    *   Conectar los datos del endpoint para renderizar gráficos dinámicos e interactivos de las series temporales (curvas de RMSD frente al tiempo).
+    *   Crear los endpoints en FastAPI que devuelven los vectores numéricos en formato JSON.
+    *   Integrar Chart.js 4 (CDN, sin build tooling) en las plantillas HTML.
+    *   Renderizar gráficos interactivos: RMSF (por residuo), RMSD y Rg (en el tiempo), energía de minimización (por paso).
+    *   Separar gráficos en dos secciones: "Métricas analizadas" (RMSF) y "Análisis extras" (RMSD, Rg), con capacidad de agregar múltiples gráficos con configuraciones distintas.
+*   Fase 3.3: Despliegue con Docker
+    *   Crear `Dockerfile` con imagen Python 3.11-slim y dependencias de sistema (HDF5, NetCDF).
+    *   Crear `docker-compose.yml` con volúmenes para persistencia de datos y montaje de carpetas de simulaciones.
+    *   Comando de despliegue: `docker compose up --build -d`.
 ## Etapa 4: Conexión a Supabase, Validación y Cierre (Estimación: 50 horas)
 Una vez que el sistema funciona perfectamente al 100% en tu computadora, es momento de conectarlo con el entorno centralizado de producción en la nube y finalizar la documentación.
 *   Fase 4.1: Migración a Supabase (PostgreSQL Cloud)

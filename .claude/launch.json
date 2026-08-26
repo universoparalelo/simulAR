@@ -3,10 +3,9 @@
   "configurations": [
     {
       "name": "simulAR",
-      "runtimeExecutable": "C:\\Users\\celeb\\simulAR\\.venv\\Scripts\\uvicorn.exe",
-      "runtimeArgs": ["app.main:app", "--reload"],
-      "port": 8000,
-      "autoPort": true
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "--build"],
+      "port": 8000
     }
   ]
 }
