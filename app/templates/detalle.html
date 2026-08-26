@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=analysis-modal-2" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=metricas-sections-1" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
@@ -113,18 +113,35 @@
                 </section>
             </div>
 
-            <!-- MÉTRICAS Y GRÁFICOS -->
+            <!-- BANNER DE ESTADO DEL ANÁLISIS -->
+            <div class="analisis-banner" id="analisisBanner" style="display:none;"></div>
+
+            <!-- MÉTRICAS ANALIZADAS (RMSF + propiedades estáticas + energía) -->
             <section class="simulations-section" id="metricasSection">
                 <div class="metricas-header">
-                    <h2 class="section-title">Métricas de análisis</h2>
+                    <h2 class="section-title">Métricas analizadas</h2>
+                    <button class="header-button" id="btnAgregarRmsf" onclick="abrirModalContextual('rmsf')" style="display:none;">
+                        <i class="ti ti-plus"></i> Agregar gráfico RMSF
+                    </button>
                 </div>
-                <div class="analisis-banner" id="analisisBanner" style="display:none;"></div>
                 <div class="metricas-charts-grid" id="metricasChartsGrid"></div>
                 <div class="detail-panel" id="propiedadesEstaticasPanel" style="display:none;">
                     <h3 class="section-title">Propiedades estáticas</h3>
                     <div class="detail-list" id="propiedadesEstaticasList"></div>
                 </div>
                 <div class="metricas-empty" id="metricasEmpty">Todavía no se calcularon métricas para esta simulación.</div>
+            </section>
+
+            <!-- ANÁLISIS EXTRAS (RMSD + Radio de giro) -->
+            <section class="simulations-section" id="extrasSection" style="display:none;">
+                <div class="metricas-header">
+                    <h2 class="section-title">Análisis extras</h2>
+                    <button class="header-button" onclick="abrirModalContextual('extras')">
+                        <i class="ti ti-plus"></i> Agregar análisis
+                    </button>
+                </div>
+                <div class="metricas-charts-grid" id="extrasChartsGrid"></div>
+                <div class="metricas-empty" id="extrasEmpty" style="display:none;">No hay análisis extras calculados.</div>
             </section>
 
 
@@ -424,30 +441,58 @@
                 return map[tipo] || '';
             }
 
+            let modalMode = 'all'; // 'all' | 'rmsf' | 'extras'
+
             function analizarSimulacion() {
-                configureModal({ rmsf: true, rmsd: false, rg: false });
-                document.getElementById('analysisOverlay').hidden = false;
+                abrirModalContextual('all');
             }
 
-            function configureModal(checked) {
-                const warn = document.getElementById('modalNoTrajWarning');
+            function abrirModalContextual(mode) {
+                modalMode = mode;
                 const allMetrics = ['rmsf', 'rmsd', 'rg'];
+                const warn = document.getElementById('modalNoTrajWarning');
+
+                // Qué métricas mostrar según el modo
+                const visible = {
+                    all: ['rmsf', 'rmsd', 'rg'],
+                    rmsf: ['rmsf'],
+                    extras: ['rmsd', 'rg'],
+                };
+                const show = visible[mode] || allMetrics;
+
                 if (!hasTrayectoria) {
                     warn.style.display = 'flex';
                     for (const m of allMetrics) {
+                        const card = document.getElementById('card' + m.charAt(0).toUpperCase() + m.slice(1));
+                        card.style.display = 'none';
                         document.getElementById('chk' + m.charAt(0).toUpperCase() + m.slice(1)).checked = false;
                         document.getElementById('chk' + m.charAt(0).toUpperCase() + m.slice(1)).disabled = true;
                     }
                 } else {
                     warn.style.display = 'none';
                     for (const m of allMetrics) {
+                        const card = document.getElementById('card' + m.charAt(0).toUpperCase() + m.slice(1));
                         const chk = document.getElementById('chk' + m.charAt(0).toUpperCase() + m.slice(1));
-                        chk.disabled = false;
-                        chk.checked = !!checked[m];
                         const body = document.getElementById('body' + m.charAt(0).toUpperCase() + m.slice(1));
-                        body.hidden = !checked[m];
+                        if (show.includes(m)) {
+                            card.style.display = '';
+                            chk.disabled = false;
+                            chk.checked = true;
+                            body.hidden = false;
+                        } else {
+                            card.style.display = 'none';
+                            chk.checked = false;
+                            chk.disabled = true;
+                        }
                     }
                 }
+
+                // Título del modal según contexto
+                const titleEl = document.querySelector('.analysis-title');
+                const titles = { all: 'Seleccionar métricas y parámetros', rmsf: 'Agregar gráfico RMSF', extras: 'Agregar análisis extra' };
+                titleEl.textContent = titles[mode] || titles.all;
+
+                document.getElementById('analysisOverlay').hidden = false;
             }
 
             function closeAnalysisModal() {
@@ -563,42 +608,44 @@
                 }
             }
 
-            function renderMetricas(metricas) {
-                const grid = document.getElementById('metricasChartsGrid');
-                Object.values(charts).forEach((c) => c.destroy());
-                for (const key in charts) delete charts[key];
-                grid.innerHTML = '';
+            function buildRangeLabel(datos, metricType) {
+                const cfg = datos.config;
+                if (!cfg) return '';
+                const parts = [];
+                if (cfg.atom_selection) {
+                    const labelMap = { 'name CA': 'C-alpha', 'backbone': 'Backbone', 'protein': 'Proteína', 'all': 'Todos los átomos' };
+                    parts.push(labelMap[cfg.atom_selection] || cfg.atom_selection);
+                }
+                if (metricType === 'rmsf') {
+                    const resids = datos.residuos;
+                    if (resids?.length) parts.push(`Residuos ${resids[0]}–${resids[resids.length - 1]}`);
+                }
+                if (cfg.frame_start != null || cfg.frame_end != null) {
+                    parts.push(`Frames ${cfg.frame_start ?? 0}–${cfg.frame_end ?? 'fin'}`);
+                }
+                return parts.join(' · ');
+            }
 
-                let propiedades = null;
-                let huboSeries = false;
+            function createChartPanel(m, config, datos, rangeLabel) {
+                const panel = document.createElement('div');
+                panel.className = 'detail-panel metric-chart-panel';
+                const rangeLine = rangeLabel ? `<div class="chart-range-label">${rangeLabel}</div>` : '';
+                panel.innerHTML = `
+                    <div class="chart-panel-header">
+                        <div>
+                            <h3 class="section-title">${config.label}</h3>
+                            ${rangeLine}
+                        </div>
+                        <button class="chart-delete-btn" onclick="eliminarMetrica(${m.id})" title="Eliminar gráfico">
+                            <i class="ti ti-trash"></i>
+                        </button>
+                    </div>
+                    <canvas></canvas>`;
 
-                for (const m of metricas) {
-                    if (m.tipo_metrica === 'propiedades_estaticas') {
-                        propiedades = m.valores_tiempo_json;
-                        continue;
-                    }
-                    const config = METRIC_CONFIG[m.tipo_metrica];
-                    const datos = m.valores_tiempo_json;
-                    if (!config || !datos || !datos[config.yKey]?.length) continue;
+                const puntos = datos[config.xKey].map((x, i) => ({ x, y: datos[config.yKey][i] }));
 
-                    huboSeries = true;
-                    const panel = document.createElement('div');
-                    panel.className = 'detail-panel metric-chart-panel';
-                    let configTag = '';
-                    if (datos.config) {
-                        const parts = [];
-                        if (datos.config.atom_selection) parts.push(datos.config.atom_selection);
-                        if (datos.config.frame_start != null || datos.config.frame_end != null) {
-                            parts.push(`Frames: ${datos.config.frame_start ?? 0}–${datos.config.frame_end ?? 'fin'}`);
-                        }
-                        if (parts.length) configTag = `<div class="analysis-config-tag">Selección: ${parts.join(' · ')}</div>`;
-                    }
-                    panel.innerHTML = `<h3 class="section-title">${config.label}</h3>${configTag}<canvas></canvas>`;
-                    grid.appendChild(panel);
-
-                    const puntos = datos[config.xKey].map((x, i) => ({ x, y: datos[config.yKey][i] }));
-
-                    charts[m.tipo_metrica] = new Chart(panel.querySelector('canvas'), {
+                setTimeout(() => {
+                    charts[m.id] = new Chart(panel.querySelector('canvas'), {
                         type: 'line',
                         data: {
                             datasets: [{
@@ -626,8 +673,55 @@
                             plugins: { legend: { display: false } },
                         },
                     });
+                }, 0);
+
+                return panel;
+            }
+
+            async function eliminarMetrica(metricaId) {
+                if (!confirm('¿Eliminar este gráfico?')) return;
+                const res = await fetch(`/api/metricas/${metricaId}`, { method: 'DELETE' });
+                if (res.ok) await loadSimulation();
+                else alert('Error al eliminar la métrica.');
+            }
+
+            function renderMetricas(metricas) {
+                const mainGrid = document.getElementById('metricasChartsGrid');
+                const extrasGrid = document.getElementById('extrasChartsGrid');
+                Object.values(charts).forEach((c) => c.destroy());
+                for (const key in charts) delete charts[key];
+                mainGrid.innerHTML = '';
+                extrasGrid.innerHTML = '';
+
+                let propiedades = null;
+                let huboRmsf = false;
+                let huboExtras = false;
+
+                const mainTypes = new Set(['rmsf', 'energia_minimizacion']);
+                const extrasTypes = new Set(['rmsd', 'rg']);
+
+                for (const m of metricas) {
+                    if (m.tipo_metrica === 'propiedades_estaticas') {
+                        propiedades = m.valores_tiempo_json;
+                        continue;
+                    }
+                    const config = METRIC_CONFIG[m.tipo_metrica];
+                    const datos = m.valores_tiempo_json;
+                    if (!config || !datos || !datos[config.yKey]?.length) continue;
+
+                    const rangeLabel = buildRangeLabel(datos, m.tipo_metrica);
+                    const panel = createChartPanel(m, config, datos, rangeLabel);
+
+                    if (mainTypes.has(m.tipo_metrica)) {
+                        huboRmsf = true;
+                        mainGrid.appendChild(panel);
+                    } else if (extrasTypes.has(m.tipo_metrica)) {
+                        huboExtras = true;
+                        extrasGrid.appendChild(panel);
+                    }
                 }
 
+                // Propiedades estáticas
                 const propPanel = document.getElementById('propiedadesEstaticasPanel');
                 if (propiedades) {
                     document.getElementById('propiedadesEstaticasList').innerHTML = `
@@ -640,7 +734,15 @@
                     propPanel.style.display = 'none';
                 }
 
-                document.getElementById('metricasEmpty').style.display = (huboSeries || propiedades) ? 'none' : '';
+                // Visibilidad secciones
+                document.getElementById('metricasEmpty').style.display = (huboRmsf || propiedades) ? 'none' : '';
+                document.getElementById('btnAgregarRmsf').style.display = (huboRmsf || propiedades) ? '' : 'none';
+
+                const extrasSection = document.getElementById('extrasSection');
+                const extrasEmpty = document.getElementById('extrasEmpty');
+                // Mostrar sección extras si hay datos O si ya hay métricas analizadas (para que puedan agregar)
+                extrasSection.style.display = (huboRmsf || propiedades || huboExtras) ? '' : 'none';
+                extrasEmpty.style.display = huboExtras ? 'none' : '';
             }
 
             async function rescanSimulation() {

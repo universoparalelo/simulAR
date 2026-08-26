@@ -297,18 +297,7 @@ def _save_metrica(
     tipo: str,
     valores: Any,
 ) -> ResultadoMetrica:
-    """Sobreescribe la métrica si ya existe, o la crea."""
-    existing = (
-        db.query(ResultadoMetrica)
-        .filter_by(simulacion_id=simulacion_id, tipo_metrica=tipo)
-        .first()
-    )
-    if existing:
-        existing.valores_tiempo_json = valores
-        db.commit()
-        db.refresh(existing)
-        return existing
-
+    """Crea un nuevo registro de métrica (permite múltiples del mismo tipo)."""
     metrica = ResultadoMetrica(
         simulacion_id=simulacion_id,
         tipo_metrica=tipo,
