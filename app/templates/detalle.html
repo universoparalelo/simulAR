@@ -127,23 +127,7 @@
                 <div class="metricas-empty" id="metricasEmpty">Todavía no se calcularon métricas para esta simulación.</div>
             </section>
 
-            <!-- ANÁLISIS ADICIONALES (RMSD / Rg) -->
-            <section class="simulations-section" id="extraAnalysisSection" style="display:none;">
-                <h2 class="section-title">Análisis adicionales</h2>
-                <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:var(--spacing-md);">
-                    Generá gráficos de RMSD o Radio de giro configurando la selección de átomos y rango de frames.
-                </p>
-                <div style="display:flex;gap:var(--spacing-sm);">
-                    <button class="header-button" onclick="openModalForMetric('rmsd')">
-                        <i class="ti ti-chart-line"></i>
-                        Generar RMSD
-                    </button>
-                    <button class="header-button" onclick="openModalForMetric('rg')">
-                        <i class="ti ti-chart-line"></i>
-                        Generar Radio de giro
-                    </button>
-                </div>
-            </section>
+
 
             <!-- ANÁLISIS DE ALMACENAMIENTO -->
             <section class="simulations-section" id="storageSection" style="display:none;">
@@ -218,7 +202,7 @@
                     </div>
                     <div class="analysis-metric-body" id="bodyRmsf">
                         <div class="analysis-field">
-                            <label>Selección de átomos</label>
+                            <label>Qué átomos analizar</label>
                             <select id="selRmsf" onchange="handlePresetChange('rmsf')">
                                 <option value="name CA" selected>C-alpha (un valor por residuo)</option>
                                 <option value="backbone">Backbone</option>
@@ -228,14 +212,14 @@
                             </select>
                         </div>
                         <div class="analysis-field" id="customFieldRmsf" hidden>
-                            <label>Selección MDAnalysis</label>
+                            <label>Expresión MDAnalysis personalizada</label>
                             <input type="text" id="customRmsf" placeholder="ej: name CA and resid 1:100">
                         </div>
                         <div class="analysis-field">
-                            <label>Rango de frames (opcional)</label>
+                            <label>Rango temporal de la trayectoria (opcional)</label>
                             <div class="analysis-frame-range">
-                                <input type="number" id="frameStartRmsf" placeholder="Inicio" min="0">
-                                <input type="number" id="frameEndRmsf" placeholder="Fin" min="0">
+                                <input type="number" id="frameStartRmsf" placeholder="Frame inicio" min="0">
+                                <input type="number" id="frameEndRmsf" placeholder="Frame fin" min="0">
                             </div>
                         </div>
                     </div>
@@ -248,7 +232,7 @@
                     </div>
                     <div class="analysis-metric-body" id="bodyRmsd" hidden>
                         <div class="analysis-field">
-                            <label>Selección de átomos</label>
+                            <label>Qué átomos analizar</label>
                             <select id="selRmsd" onchange="handlePresetChange('rmsd')">
                                 <option value="backbone" selected>Backbone</option>
                                 <option value="name CA">C-alpha</option>
@@ -258,14 +242,14 @@
                             </select>
                         </div>
                         <div class="analysis-field" id="customFieldRmsd" hidden>
-                            <label>Selección MDAnalysis</label>
+                            <label>Expresión MDAnalysis personalizada</label>
                             <input type="text" id="customRmsd" placeholder="ej: resid 1:50 and backbone">
                         </div>
                         <div class="analysis-field">
-                            <label>Rango de frames (opcional)</label>
+                            <label>Rango temporal de la trayectoria (opcional)</label>
                             <div class="analysis-frame-range">
-                                <input type="number" id="frameStartRmsd" placeholder="Inicio" min="0">
-                                <input type="number" id="frameEndRmsd" placeholder="Fin" min="0">
+                                <input type="number" id="frameStartRmsd" placeholder="Frame inicio" min="0">
+                                <input type="number" id="frameEndRmsd" placeholder="Frame fin" min="0">
                             </div>
                         </div>
                     </div>
@@ -278,7 +262,7 @@
                     </div>
                     <div class="analysis-metric-body" id="bodyRg" hidden>
                         <div class="analysis-field">
-                            <label>Selección de átomos</label>
+                            <label>Qué átomos analizar</label>
                             <select id="selRg" onchange="handlePresetChange('rg')">
                                 <option value="backbone">Backbone</option>
                                 <option value="name CA">C-alpha</option>
@@ -288,14 +272,14 @@
                             </select>
                         </div>
                         <div class="analysis-field" id="customFieldRg" hidden>
-                            <label>Selección MDAnalysis</label>
+                            <label>Expresión MDAnalysis personalizada</label>
                             <input type="text" id="customRg" placeholder="ej: protein and not name H*">
                         </div>
                         <div class="analysis-field">
-                            <label>Rango de frames (opcional)</label>
+                            <label>Rango temporal de la trayectoria (opcional)</label>
                             <div class="analysis-frame-range">
-                                <input type="number" id="frameStartRg" placeholder="Inicio" min="0">
-                                <input type="number" id="frameEndRg" placeholder="Fin" min="0">
+                                <input type="number" id="frameStartRg" placeholder="Frame inicio" min="0">
+                                <input type="number" id="frameEndRg" placeholder="Frame fin" min="0">
                             </div>
                         </div>
                     </div>
@@ -419,9 +403,6 @@
                 updateAnalisisBanner(sim);
                 renderMetricas(sim.metricas || []);
 
-                // Sección de análisis adicionales (RMSD/Rg) — solo si hay trayectoria
-                document.getElementById('extraAnalysisSection').style.display = hasTrayectoria ? '' : 'none';
-
                 // Tabla de archivos
                 const tbody = document.getElementById('archivosBody');
                 if (archivos.length === 0) {
@@ -445,13 +426,6 @@
 
             function analizarSimulacion() {
                 configureModal({ rmsf: true, rmsd: false, rg: false });
-                document.getElementById('analysisOverlay').hidden = false;
-            }
-
-            function openModalForMetric(metric) {
-                const preset = { rmsf: false, rmsd: false, rg: false };
-                preset[metric] = true;
-                configureModal(preset);
                 document.getElementById('analysisOverlay').hidden = false;
             }
 
@@ -657,8 +631,7 @@
                 const propPanel = document.getElementById('propiedadesEstaticasPanel');
                 if (propiedades) {
                     document.getElementById('propiedadesEstaticasList').innerHTML = `
-                        <div class="detail-list-row"><span>Moléculas</span><strong>${propiedades.n_moleculas ?? propiedades.n_atomos ?? '—'}</strong></div>
-                        <div class="detail-list-row"><span>Residuos</span><strong>${propiedades.n_residuos ?? '—'}</strong></div>
+                        <div class="detail-list-row"><span>Moléculas (residuos)</span><strong>${propiedades.n_moleculas ?? propiedades.n_residuos ?? '—'}</strong></div>
                         <div class="detail-list-row"><span>Radio de giro</span><strong>${typeof propiedades.rg_angstrom === 'number' ? propiedades.rg_angstrom.toFixed(2) + ' Å' : '—'}</strong></div>
                         <div class="detail-list-row"><span>Masa total</span><strong>${typeof propiedades.masa_total_uma === 'number' ? propiedades.masa_total_uma.toFixed(1) + ' uma' : '—'}</strong></div>
                     `;

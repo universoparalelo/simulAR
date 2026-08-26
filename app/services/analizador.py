@@ -390,8 +390,7 @@ def calcular_propiedades_estaticas(universe: "mda.Universe") -> dict[str, Any]:
     """Calcula propiedades estáticas de una estructura (sin trayectoria)."""
     atoms = universe.select_atoms("all")
     return {
-        "n_moleculas": len(atoms.fragments),
-        "n_residuos": len(universe.residues),
+        "n_moleculas": len(universe.residues),
         "rg_angstrom": float(atoms.radius_of_gyration()),
         "masa_total_uma": float(atoms.total_mass()),
     }
