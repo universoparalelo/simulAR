@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=analysis-modal-1" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=analysis-modal-2" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
@@ -127,6 +127,24 @@
                 <div class="metricas-empty" id="metricasEmpty">Todavía no se calcularon métricas para esta simulación.</div>
             </section>
 
+            <!-- ANÁLISIS ADICIONALES (RMSD / Rg) -->
+            <section class="simulations-section" id="extraAnalysisSection" style="display:none;">
+                <h2 class="section-title">Análisis adicionales</h2>
+                <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:var(--spacing-md);">
+                    Generá gráficos de RMSD o Radio de giro configurando la selección de átomos y rango de frames.
+                </p>
+                <div style="display:flex;gap:var(--spacing-sm);">
+                    <button class="header-button" onclick="openModalForMetric('rmsd')">
+                        <i class="ti ti-chart-line"></i>
+                        Generar RMSD
+                    </button>
+                    <button class="header-button" onclick="openModalForMetric('rg')">
+                        <i class="ti ti-chart-line"></i>
+                        Generar Radio de giro
+                    </button>
+                </div>
+            </section>
+
             <!-- ANÁLISIS DE ALMACENAMIENTO -->
             <section class="simulations-section" id="storageSection" style="display:none;">
                 <h2 class="section-title">Optimización de almacenamiento</h2>
@@ -190,15 +208,45 @@
 
                 <div class="analisis-banner danger" id="modalNoTrajWarning" style="display:none;">
                     <i class="ti ti-alert-triangle"></i>
-                    Esta simulación no tiene archivo de trayectoria (.nc, .dcd, .xtc). RMSD y radio de giro temporal no están disponibles — solo se calcularán propiedades estáticas y energía de minimización.
+                    Esta simulación no tiene archivo de trayectoria (.nc, .dcd, .xtc). Las métricas temporales no están disponibles — solo se calcularán propiedades estáticas y energía de minimización.
                 </div>
 
-                <div class="analysis-metric-card">
+                <div class="analysis-metric-card" id="cardRmsf">
+                    <div class="analysis-metric-header" onclick="toggleMetricBody('rmsf')">
+                        <input type="checkbox" id="chkRmsf" checked onclick="event.stopPropagation()">
+                        <label for="chkRmsf">RMSF <span class="metric-desc">— Root-Mean-Square Fluctuation (por residuo)</span></label>
+                    </div>
+                    <div class="analysis-metric-body" id="bodyRmsf">
+                        <div class="analysis-field">
+                            <label>Selección de átomos</label>
+                            <select id="selRmsf" onchange="handlePresetChange('rmsf')">
+                                <option value="name CA" selected>C-alpha (un valor por residuo)</option>
+                                <option value="backbone">Backbone</option>
+                                <option value="protein">Proteína completa</option>
+                                <option value="all">Todos los átomos</option>
+                                <option value="__custom__">Selección personalizada...</option>
+                            </select>
+                        </div>
+                        <div class="analysis-field" id="customFieldRmsf" hidden>
+                            <label>Selección MDAnalysis</label>
+                            <input type="text" id="customRmsf" placeholder="ej: name CA and resid 1:100">
+                        </div>
+                        <div class="analysis-field">
+                            <label>Rango de frames (opcional)</label>
+                            <div class="analysis-frame-range">
+                                <input type="number" id="frameStartRmsf" placeholder="Inicio" min="0">
+                                <input type="number" id="frameEndRmsf" placeholder="Fin" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-metric-card" id="cardRmsd">
                     <div class="analysis-metric-header" onclick="toggleMetricBody('rmsd')">
-                        <input type="checkbox" id="chkRmsd" checked onclick="event.stopPropagation()">
+                        <input type="checkbox" id="chkRmsd" onclick="event.stopPropagation()">
                         <label for="chkRmsd">RMSD <span class="metric-desc">— Root-Mean-Square Deviation</span></label>
                     </div>
-                    <div class="analysis-metric-body" id="bodyRmsd">
+                    <div class="analysis-metric-body" id="bodyRmsd" hidden>
                         <div class="analysis-field">
                             <label>Selección de átomos</label>
                             <select id="selRmsd" onchange="handlePresetChange('rmsd')">
@@ -223,12 +271,12 @@
                     </div>
                 </div>
 
-                <div class="analysis-metric-card">
+                <div class="analysis-metric-card" id="cardRg">
                     <div class="analysis-metric-header" onclick="toggleMetricBody('rg')">
-                        <input type="checkbox" id="chkRg" checked onclick="event.stopPropagation()">
+                        <input type="checkbox" id="chkRg" onclick="event.stopPropagation()">
                         <label for="chkRg">Radio de giro <span class="metric-desc">— Radius of Gyration</span></label>
                     </div>
-                    <div class="analysis-metric-body" id="bodyRg">
+                    <div class="analysis-metric-body" id="bodyRg" hidden>
                         <div class="analysis-field">
                             <label>Selección de átomos</label>
                             <select id="selRg" onchange="handlePresetChange('rg')">
@@ -271,6 +319,7 @@
             let hasTrayectoria = false;
 
             const METRIC_CONFIG = {
+                rmsf: { label: 'RMSF (Å)', xKey: 'residuos', yKey: 'rmsf_angstrom', xLabel: 'Residuo', color: '#9c36b5' },
                 rmsd: { label: 'RMSD (Å)', xKey: 'tiempos_ps', yKey: 'rmsd_angstrom', xLabel: 'Tiempo (ps)', color: '#1971c2' },
                 rg: { label: 'Radio de giro (Å)', xKey: 'tiempos_ps', yKey: 'rg_angstrom', xLabel: 'Tiempo (ps)', color: '#2f9e44' },
                 energia_minimizacion: { label: 'Energía (kcal/mol)', xKey: 'pasos', yKey: 'energia_kcal_mol', xLabel: 'Paso de minimización', color: '#f08c00' },
@@ -370,6 +419,9 @@
                 updateAnalisisBanner(sim);
                 renderMetricas(sim.metricas || []);
 
+                // Sección de análisis adicionales (RMSD/Rg) — solo si hay trayectoria
+                document.getElementById('extraAnalysisSection').style.display = hasTrayectoria ? '' : 'none';
+
                 // Tabla de archivos
                 const tbody = document.getElementById('archivosBody');
                 if (archivos.length === 0) {
@@ -392,21 +444,36 @@
             }
 
             function analizarSimulacion() {
+                configureModal({ rmsf: true, rmsd: false, rg: false });
+                document.getElementById('analysisOverlay').hidden = false;
+            }
+
+            function openModalForMetric(metric) {
+                const preset = { rmsf: false, rmsd: false, rg: false };
+                preset[metric] = true;
+                configureModal(preset);
+                document.getElementById('analysisOverlay').hidden = false;
+            }
+
+            function configureModal(checked) {
                 const warn = document.getElementById('modalNoTrajWarning');
-                const rmsdCard = document.getElementById('chkRmsd');
-                const rgCard = document.getElementById('chkRg');
+                const allMetrics = ['rmsf', 'rmsd', 'rg'];
                 if (!hasTrayectoria) {
                     warn.style.display = 'flex';
-                    rmsdCard.checked = false;
-                    rmsdCard.disabled = true;
-                    rgCard.checked = false;
-                    rgCard.disabled = true;
+                    for (const m of allMetrics) {
+                        document.getElementById('chk' + m.charAt(0).toUpperCase() + m.slice(1)).checked = false;
+                        document.getElementById('chk' + m.charAt(0).toUpperCase() + m.slice(1)).disabled = true;
+                    }
                 } else {
                     warn.style.display = 'none';
-                    rmsdCard.disabled = false;
-                    rgCard.disabled = false;
+                    for (const m of allMetrics) {
+                        const chk = document.getElementById('chk' + m.charAt(0).toUpperCase() + m.slice(1));
+                        chk.disabled = false;
+                        chk.checked = !!checked[m];
+                        const body = document.getElementById('body' + m.charAt(0).toUpperCase() + m.slice(1));
+                        body.hidden = !checked[m];
+                    }
                 }
-                document.getElementById('analysisOverlay').hidden = false;
             }
 
             function closeAnalysisModal() {
@@ -440,6 +507,7 @@
 
             async function ejecutarAnalisis() {
                 const metricas = {};
+                if (document.getElementById('chkRmsf').checked) metricas.rmsf = getMetricConfig('rmsf');
                 if (document.getElementById('chkRmsd').checked) metricas.rmsd = getMetricConfig('rmsd');
                 if (document.getElementById('chkRg').checked) metricas.rg = getMetricConfig('rg');
 
@@ -589,7 +657,7 @@
                 const propPanel = document.getElementById('propiedadesEstaticasPanel');
                 if (propiedades) {
                     document.getElementById('propiedadesEstaticasList').innerHTML = `
-                        <div class="detail-list-row"><span>Átomos</span><strong>${propiedades.n_atomos ?? '—'}</strong></div>
+                        <div class="detail-list-row"><span>Moléculas</span><strong>${propiedades.n_moleculas ?? propiedades.n_atomos ?? '—'}</strong></div>
                         <div class="detail-list-row"><span>Residuos</span><strong>${propiedades.n_residuos ?? '—'}</strong></div>
                         <div class="detail-list-row"><span>Radio de giro</span><strong>${typeof propiedades.rg_angstrom === 'number' ? propiedades.rg_angstrom.toFixed(2) + ' Å' : '—'}</strong></div>
                         <div class="detail-list-row"><span>Masa total</span><strong>${typeof propiedades.masa_total_uma === 'number' ? propiedades.masa_total_uma.toFixed(1) + ' uma' : '—'}</strong></div>

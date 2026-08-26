@@ -54,8 +54,7 @@ class AnalisisMetricaConfig(BaseModel):
 
 class AnalisisRequest(BaseModel):
     metricas: Dict[str, AnalisisMetricaConfig] = Field(default_factory=lambda: {
-        "rmsd": AnalisisMetricaConfig(atom_selection="backbone"),
-        "rg": AnalisisMetricaConfig(atom_selection="all"),
+        "rmsf": AnalisisMetricaConfig(atom_selection="name CA"),
     })
 
 

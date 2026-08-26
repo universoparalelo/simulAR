@@ -358,11 +358,39 @@ def parsear_energia_minimizacion(out_path: str) -> dict[str, Any]:
     }
 
 
+def calcular_rmsf(
+    universe: "mda.Universe",
+    select: str = "name CA",
+    frame_start: int | None = None,
+    frame_end: int | None = None,
+) -> dict[str, Any]:
+    """Calcula RMSF por átomo seleccionado (típicamente C-alpha → un valor por residuo)."""
+    atoms = universe.select_atoms(select)
+    if len(atoms) == 0:
+        atoms = universe.select_atoms("name CA")
+        if len(atoms) == 0:
+            atoms = universe.select_atoms("all")
+
+    start = frame_start or 0
+    stop = frame_end if frame_end is not None else len(universe.trajectory)
+
+    rmsf_analysis = rms.RMSF(atoms)
+    rmsf_analysis.run(start=start, stop=stop)
+
+    resids = atoms.resids.tolist()
+    rmsf_vals = rmsf_analysis.results.rmsf.tolist()
+
+    return {
+        "residuos": resids,
+        "rmsf_angstrom": rmsf_vals,
+    }
+
+
 def calcular_propiedades_estaticas(universe: "mda.Universe") -> dict[str, Any]:
     """Calcula propiedades estáticas de una estructura (sin trayectoria)."""
     atoms = universe.select_atoms("all")
     return {
-        "n_atomos": len(atoms),
+        "n_moleculas": len(atoms.fragments),
         "n_residuos": len(universe.residues),
         "rg_angstrom": float(atoms.radius_of_gyration()),
         "masa_total_uma": float(atoms.total_mass()),
@@ -396,8 +424,7 @@ def analizar_simulacion(
 
     if metricas is None:
         metricas = {
-            "rmsd": {"atom_selection": "backbone"},
-            "rg": {"atom_selection": "all"},
+            "rmsf": {"atom_selection": "name CA"},
         }
 
     sim: Optional[Simulacion] = db.query(Simulacion).filter_by(id=simulacion_id).first()
@@ -546,6 +573,26 @@ def analizar_simulacion(
                 }
         except Exception as exc:
             resultados["errores"].append(f"Energia minimizacion: {exc}")
+
+    # --- RMSF (solo con trayectoria) ---
+    if tiene_trayectoria and "rmsf" in metricas:
+        cfg = metricas["rmsf"]
+        sel = cfg.get("atom_selection", "name CA")
+        fs = cfg.get("frame_start")
+        fe = cfg.get("frame_end")
+        try:
+            rmsf_data = calcular_rmsf(universe, select=sel, frame_start=fs, frame_end=fe)
+            rmsf_data["config"] = {"atom_selection": sel, "frame_start": fs, "frame_end": fe}
+            _save_metrica(db, simulacion_id, "rmsf", rmsf_data)
+            resultados["metricas_calculadas"].append("rmsf")
+            vals = rmsf_data["rmsf_angstrom"]
+            resultados["rmsf_resumen"] = {
+                "min": min(vals),
+                "max": max(vals),
+                "promedio": sum(vals) / len(vals),
+            }
+        except Exception as exc:
+            resultados["errores"].append(f"RMSF: {exc}")
 
     # --- RMSD (solo con trayectoria) ---
     if tiene_trayectoria and "rmsd" in metricas:
