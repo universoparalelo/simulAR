@@ -466,6 +466,121 @@ def parsear_gaussian_log(log_path: str) -> dict[str, Any]:
     return result
 
 
+def parsear_gamess_log(log_path: str) -> dict[str, Any]:
+    """Extrae métricas de un archivo .log de GAMESS.
+
+    Extrae: energía SCF, método (DFT funcional), base, RUNTYP,
+    descomposición LMOEDA (ES, EX, REP, POL, DISP, total),
+    y estado de terminación.
+    """
+    import re
+
+    result: dict[str, Any] = {
+        "software": "GAMESS",
+        "metodo": None,
+        "base": None,
+        "runtyp": None,
+        "energia_hartree": None,
+        "energia_kcal_mol": None,
+        "lmoeda": {},
+        "normal_termination": False,
+        "errores_gamess": [],
+        "n_atoms": None,
+        "n_basis": None,
+    }
+
+    try:
+        with open(log_path, encoding="utf-8", errors="ignore") as f:
+            contenido = f.read()
+    except OSError:
+        return result
+
+    if re.search(r"EXECUTION OF GAMESS TERMINATED NORMALLY", contenido):
+        result["normal_termination"] = True
+
+    runtyp_match = re.search(r"RUNTYP=(\S+)", contenido)
+    if runtyp_match:
+        result["runtyp"] = runtyp_match.group(1)
+
+    dft_match = re.search(r"DFTTYP=(\S+)", contenido)
+    if dft_match and dft_match.group(1) != "NONE":
+        result["metodo"] = dft_match.group(1)
+    else:
+        scftyp_match = re.search(r"SCFTYP=(\S+)", contenido)
+        if scftyp_match:
+            result["metodo"] = scftyp_match.group(1)
+
+    gbasis_match = re.search(r"GBASIS=(\S+)", contenido)
+    ngauss_match = re.search(r"IGAUSS=\s*(\d+)", contenido)
+    if gbasis_match:
+        base_parts = [gbasis_match.group(1)]
+        if ngauss_match:
+            base_parts.append(f"NGAUSS={ngauss_match.group(1)}")
+        ndfunc = re.search(r"NDFUNC=\s*(\d+)", contenido)
+        npfunc = re.search(r"NPFUNC=\s*(\d+)", contenido)
+        diffsp = re.search(r"DIFFSP=\s*(\S+)", contenido)
+        diffs = re.search(r"DIFFS\s*=\s*(\S+)", contenido)
+        if ndfunc and int(ndfunc.group(1)) > 0:
+            base_parts.append(f"NDFUNC={ndfunc.group(1)}")
+        if npfunc and int(npfunc.group(1)) > 0:
+            base_parts.append(f"NPFUNC={npfunc.group(1)}")
+        if diffsp and diffsp.group(1) == "T":
+            base_parts.append("DIFFSP")
+        if diffs and diffs.group(1) == "T":
+            base_parts.append("DIFFS")
+        result["base"] = " ".join(base_parts)
+
+    atoms_match = re.search(r"TOTAL NUMBER OF ATOMS\s*=\s*(\d+)", contenido)
+    if atoms_match:
+        result["n_atoms"] = int(atoms_match.group(1))
+
+    basis_match = re.search(
+        r"NUMBER OF CARTESIAN GAUSSIAN BASIS FUNCTIONS\s*=\s*(\d+)", contenido
+    )
+    if basis_match:
+        result["n_basis"] = int(basis_match.group(1))
+
+    energy_match = re.search(
+        r"FINAL (?:RHF|UHF|ROHF|MCSCF|DFT) ENERGY IS\s+([-\d.]+)", contenido
+    )
+    if energy_match:
+        e = float(energy_match.group(1))
+        result["energia_hartree"] = e
+        result["energia_kcal_mol"] = round(e * 627.5095, 4)
+
+    eda_labels = {
+        "ELECTROSTATIC ENERGY": "electrostatica",
+        "EXCHANGE ENERGY": "intercambio",
+        "REPULSION ENERGY": "repulsion",
+        "POLARIZATION ENERGY": "polarizacion",
+        "DISPERSION ENERGY": "dispersion",
+        "TOTAL INTERACTION ENERGY": "interaccion_total",
+    }
+    for label, key in eda_labels.items():
+        pattern = rf"{re.escape(label)}\s*\(\w+\)?\s*=\s*([-\d.]+)\s+([-\d.]+)"
+        match = re.search(pattern, contenido)
+        if not match:
+            pattern_no_paren = rf"{re.escape(label)}\s*=\s*([-\d.]+)\s+([-\d.]+)"
+            match = re.search(pattern_no_paren, contenido)
+        if match:
+            result["lmoeda"][key] = {
+                "hartree": float(match.group(1)),
+                "kcal_mol": float(match.group(2)),
+            }
+
+    error_patterns = [
+        (r"EXECUTION OF GAMESS TERMINATED -ABNORMALLY-", "abnormal_termination"),
+        (r"SCF IS UNCONVERGED", "scf_unconverged"),
+        (r"ERROR.*MEMORY", "memory_error"),
+        (r"THE GEOMETRY SEARCH IS NOT CONVERGED", "geometry_unconverged"),
+    ]
+    for pattern, label in error_patterns:
+        if re.search(pattern, contenido, re.IGNORECASE):
+            result["errores_gamess"].append(label)
+
+    return result
+
+
 def parsear_energia_minimizacion(out_path: str) -> dict[str, Any]:
     """Extrae la curva de energía de un archivo .out de minimización AMBER (sander/pmemd).
 
@@ -596,6 +711,63 @@ def _analizar_gaussian(
 
 
 # ---------------------------------------------------------------------------
+# Análisis de simulaciones GAMESS
+# ---------------------------------------------------------------------------
+
+def _analizar_gamess(
+    db: Session,
+    sim: Simulacion,
+    archivos: list[Archivo],
+) -> dict[str, Any]:
+    """Analiza archivos .log de GAMESS y persiste métricas."""
+    log_files = [
+        a.nombre_archivo for a in archivos
+        if (a.extension or "").lower() in (".log", ".out")
+    ]
+
+    resultados: dict[str, Any] = {
+        "simulacion_id": sim.id,
+        "modo": "gamess",
+        "motor_analisis": "regex_parser",
+        "metricas_calculadas": [],
+        "errores": [],
+        "advertencias": [],
+        "logs_analizados": [],
+    }
+
+    if not log_files:
+        raise ValueError(
+            "No se encontraron archivos .log/.out de GAMESS para analizar."
+        )
+
+    for log_rel in log_files:
+        log_path = os.path.join(sim.ruta_absoluta, log_rel)
+        try:
+            datos = parsear_gamess_log(log_path)
+        except Exception as exc:
+            resultados["errores"].append(f"{log_rel}: {exc}")
+            continue
+
+        if datos["energia_hartree"] is None and not datos["lmoeda"]:
+            resultados["advertencias"].append(
+                f"{log_rel}: no se encontró energía ni datos EDA"
+            )
+            continue
+
+        datos["archivo"] = log_rel
+        _save_metrica(db, sim.id, "gamess_log", datos)
+        resultados["metricas_calculadas"].append(f"gamess_log:{log_rel}")
+        resultados["logs_analizados"].append(log_rel)
+
+    if not resultados["logs_analizados"]:
+        raise ValueError(
+            "No se pudo extraer datos de ningún archivo .log de GAMESS."
+        )
+
+    return resultados
+
+
+# ---------------------------------------------------------------------------
 # Función principal de análisis
 # ---------------------------------------------------------------------------
 
@@ -631,6 +803,10 @@ def analizar_simulacion(
     # --- Gaussian: parsear .log directamente, no usa MDAnalysis ---
     if (sim.software or "").lower() == "gaussian":
         return _analizar_gaussian(db, sim, archivos)
+
+    # --- GAMESS: parsear .log directamente, no usa MDAnalysis ---
+    if (sim.software or "").lower() == "gamess":
+        return _analizar_gamess(db, sim, archivos)
 
     if not MDA_AVAILABLE:
         raise ValueError(

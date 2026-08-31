@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=gaussian-1" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=gamess-1" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
@@ -141,6 +141,12 @@
             <section class="simulations-section" id="gaussianSection" style="display:none;">
                 <h2 class="section-title">Resultados Gaussian</h2>
                 <div id="gaussianResults"></div>
+            </section>
+
+            <!-- RESULTADOS GAMESS -->
+            <section class="simulations-section" id="gamessSection" style="display:none;">
+                <h2 class="section-title">Resultados GAMESS</h2>
+                <div id="gamessResults"></div>
             </section>
 
             <!-- ANÁLISIS EXTRAS (RMSD + Radio de giro) -->
@@ -457,7 +463,7 @@
             let modalMode = 'all'; // 'all' | 'rmsf' | 'extras'
 
             async function analizarSimulacion() {
-                if (simSoftware === 'gaussian') {
+                if (simSoftware === 'gaussian' || simSoftware === 'gamess') {
                     const btn = document.getElementById('btnAnalizar');
                     btn.disabled = true;
                     try {
@@ -785,6 +791,74 @@
                 return html;
             }
 
+            function renderGamessLog(m) {
+                const d = m.valores_tiempo_json;
+                const metricaId = m.id;
+                let html = `<div class="detail-panel">`;
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
+                html += `<h3 class="section-title">${d.archivo || 'GAMESS output'}</h3>`;
+                html += `<button class="header-button danger" onclick="eliminarMetrica(${metricaId})" title="Eliminar resultado"><i class="ti ti-trash"></i> Eliminar resultado</button>`;
+                html += `</div>`;
+                html += `<div class="detail-list">`;
+
+                if (d.metodo || d.base) {
+                    const nivel = [d.metodo, d.base].filter(Boolean).join(' / ');
+                    html += `<div class="detail-list-row"><span>Nivel de teoría</span><strong>${nivel}</strong></div>`;
+                }
+
+                if (d.runtyp) {
+                    html += `<div class="detail-list-row"><span>Tipo de cálculo</span><strong>${d.runtyp}</strong></div>`;
+                }
+
+                if (d.energia_hartree != null) {
+                    html += `<div class="detail-list-row"><span>Energía total</span><strong>${d.energia_hartree.toFixed(6)} Ha (${d.energia_kcal_mol.toFixed(2)} kcal/mol)</strong></div>`;
+                }
+
+                html += `<div class="detail-list-row"><span>Terminación</span><strong class="status-badge ${d.normal_termination ? 'success' : 'danger'}">${d.normal_termination ? 'Normal' : 'Anormal'}</strong></div>`;
+
+                if (d.n_atoms) {
+                    html += `<div class="detail-list-row"><span>Átomos</span><strong>${d.n_atoms}</strong></div>`;
+                }
+                if (d.n_basis) {
+                    html += `<div class="detail-list-row"><span>Funciones base</span><strong>${d.n_basis}</strong></div>`;
+                }
+
+                const eda = d.lmoeda;
+                if (eda && Object.keys(eda).length) {
+                    html += `</div>`;
+                    html += `<h3 class="section-title" style="margin-top:1rem;">Descomposición de energía (LMOEDA)</h3>`;
+                    html += `<div class="detail-list">`;
+
+                    const edaLabels = {
+                        electrostatica: { label: 'Electrostática (ES)' },
+                        intercambio: { label: 'Intercambio (EX)' },
+                        repulsion: { label: 'Repulsión (REP)' },
+                        polarizacion: { label: 'Polarización (POL)' },
+                        dispersion: { label: 'Dispersión (DISP)' },
+                        interaccion_total: { label: 'Interacción total' },
+                    };
+
+                    for (const [key, meta] of Object.entries(edaLabels)) {
+                        if (!eda[key]) continue;
+                        const isTotal = key === 'interaccion_total';
+                        const style = isTotal ? 'font-weight:700;' : '';
+                        const val = eda[key];
+                        const sign = val.kcal_mol > 0 ? 'danger' : 'success';
+                        html += `<div class="detail-list-row" style="${style}">`;
+                        html += `<span>${meta.label}</span>`;
+                        html += `<strong><span class="status-badge ${isTotal ? sign : ''}">${val.kcal_mol.toFixed(4)} kcal/mol</span> <small>(${val.hartree.toFixed(6)} Ha)</small></strong>`;
+                        html += `</div>`;
+                    }
+                }
+
+                if (d.errores_gamess?.length) {
+                    html += `<div class="detail-list-row"><span>Errores detectados</span><strong class="status-badge danger">${d.errores_gamess.join(', ')}</strong></div>`;
+                }
+
+                html += `</div></div>`;
+                return html;
+            }
+
             function renderMetricas(metricas) {
                 const mainGrid = document.getElementById('metricasChartsGrid');
                 const extrasGrid = document.getElementById('extrasChartsGrid');
@@ -797,6 +871,7 @@
                 let huboRmsf = false;
                 let huboExtras = false;
                 const gaussianLogs = [];
+                const gamessLogs = [];
 
                 const mainTypes = new Set(['rmsf', 'energia_minimizacion']);
                 const extrasTypes = new Set(['rmsd', 'rg']);
@@ -808,6 +883,10 @@
                     }
                     if (m.tipo_metrica === 'gaussian_log') {
                         gaussianLogs.push(m);
+                        continue;
+                    }
+                    if (m.tipo_metrica === 'gamess_log') {
+                        gamessLogs.push(m);
                         continue;
                     }
                     const config = METRIC_CONFIG[m.tipo_metrica];
@@ -836,6 +915,16 @@
                     gaussianSection.style.display = 'none';
                 }
 
+                // GAMESS
+                const gamessSection = document.getElementById('gamessSection');
+                const gamessResults = document.getElementById('gamessResults');
+                if (gamessLogs.length) {
+                    gamessResults.innerHTML = gamessLogs.map(renderGamessLog).join('');
+                    gamessSection.style.display = '';
+                } else {
+                    gamessSection.style.display = 'none';
+                }
+
                 // Propiedades estáticas
                 const propPanel = document.getElementById('propiedadesEstaticasPanel');
                 if (propiedades) {
@@ -850,7 +939,8 @@
                 }
 
                 // Visibilidad secciones
-                const huboAlgo = huboRmsf || propiedades || gaussianLogs.length;
+                const soloQC = (gaussianLogs.length || gamessLogs.length) && !huboRmsf && !propiedades && !huboExtras;
+                const huboAlgo = huboRmsf || propiedades || gaussianLogs.length || gamessLogs.length;
                 document.getElementById('metricasEmpty').style.display = huboAlgo ? 'none' : '';
                 document.getElementById('btnAgregarRmsf').style.display = (huboRmsf || propiedades) ? '' : 'none';
 
@@ -859,8 +949,8 @@
                 extrasSection.style.display = (huboRmsf || propiedades || huboExtras) ? '' : 'none';
                 extrasEmpty.style.display = huboExtras ? 'none' : '';
 
-                // Para Gaussian, ocultar secciones que no aplican
-                if (gaussianLogs.length && !huboRmsf && !propiedades && !huboExtras) {
+                // Para Gaussian/GAMESS, ocultar secciones que no aplican
+                if (soloQC) {
                     document.getElementById('metricasSection').style.display = 'none';
                     extrasSection.style.display = 'none';
                 }
