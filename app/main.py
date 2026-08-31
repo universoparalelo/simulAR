@@ -1,3 +1,4 @@
+import shutil
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -311,9 +312,23 @@ def create_app():
 
     @app.delete("/api/simulaciones/{simulacion_id}", status_code=204)
     def delete_simulation(simulacion_id: int, db: Session = Depends(get_db)):
-        deleted = simulacion_repo.delete(db, simulacion_id)
-        if not deleted:
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
             raise HTTPException(status_code=404, detail="Simulación no encontrada")
+
+        ruta = Path(sim.ruta_absoluta)
+        project_root = Path(__file__).resolve().parents[1]
+        uploads_root = project_root / "data" / "uploads"
+        es_upload = False
+        try:
+            es_upload = ruta.resolve().is_relative_to(uploads_root.resolve())
+        except Exception:
+            pass
+
+        simulacion_repo.delete(db, sim.id)
+
+        if es_upload and ruta.exists():
+            shutil.rmtree(ruta, ignore_errors=True)
 
     # --- Archivos ---
 
@@ -329,6 +344,7 @@ def create_app():
         deleted = archivo_repo.delete(db, archivo_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
 
     # --- Métricas ---
 
