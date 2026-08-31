@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=copy-btn-1" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=gaussian-1" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
@@ -135,6 +135,12 @@
                     <div class="detail-list" id="propiedadesEstaticasList"></div>
                 </div>
                 <div class="metricas-empty" id="metricasEmpty">Todavía no se calcularon métricas para esta simulación.</div>
+            </section>
+
+            <!-- RESULTADOS GAUSSIAN -->
+            <section class="simulations-section" id="gaussianSection" style="display:none;">
+                <h2 class="section-title">Resultados Gaussian</h2>
+                <div id="gaussianResults"></div>
             </section>
 
             <!-- ANÁLISIS EXTRAS (RMSD + Radio de giro) -->
@@ -323,6 +329,7 @@
             const charts = {};
             const TRAJ_EXTS = ['.nc', '.mdcrd', '.dcd', '.trr', '.xtc', '.crd'];
             let hasTrayectoria = false;
+            let simSoftware = null;
 
             const METRIC_CONFIG = {
                 rmsf: { label: 'RMSF (Å)', xKey: 'residuos', yKey: 'rmsf_angstrom', xLabel: 'Residuo', color: '#9c36b5' },
@@ -393,6 +400,7 @@
                 document.getElementById('simNombre').textContent = sim.nombre;
 
                 // Métricas
+                simSoftware = (sim.software || '').toLowerCase();
                 document.getElementById('metSoftware').textContent = sim.software || '—';
                 document.getElementById('metArchivos').textContent = archivos.length;
                 document.getElementById('metStorage').textContent = formatBytes(meta.total_bytes);
@@ -448,7 +456,29 @@
 
             let modalMode = 'all'; // 'all' | 'rmsf' | 'extras'
 
-            function analizarSimulacion() {
+            async function analizarSimulacion() {
+                if (simSoftware === 'gaussian') {
+                    const btn = document.getElementById('btnAnalizar');
+                    btn.disabled = true;
+                    try {
+                        const res = await fetch(`/api/simulaciones/${simulationId}/analizar`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ metricas: {} }),
+                        });
+                        if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            alert(`No se pudo iniciar el análisis: ${err.detail || res.status}`);
+                            btn.disabled = false;
+                            return;
+                        }
+                        await loadSimulation();
+                    } catch {
+                        alert('Error de red al iniciar el análisis.');
+                        btn.disabled = false;
+                    }
+                    return;
+                }
                 abrirModalContextual('all');
             }
 
@@ -690,6 +720,71 @@
                 else alert('Error al eliminar la métrica.');
             }
 
+            function renderGaussianLog(m) {
+                const d = m.valores_tiempo_json;
+                const metricaId = m.id;
+                let html = `<div class="detail-panel">`;
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
+                html += `<h3 class="section-title">${d.archivo || 'Gaussian output'}</h3>`;
+                html += `<button class="header-button danger" onclick="eliminarMetrica(${metricaId})" title="Eliminar resultado"><i class="ti ti-trash"></i> Eliminar resultado</button>`;
+                html += `</div>`;
+                html += `<div class="detail-list">`;
+
+                if (d.metodo || d.base) {
+                    const nivel = [d.metodo, d.base].filter(Boolean).join('/');
+                    html += `<div class="detail-list-row"><span>Nivel de teoría</span><strong>${nivel}</strong></div>`;
+                }
+
+                if (d.energia_hartree != null) {
+                    html += `<div class="detail-list-row"><span>Energía electrónica</span><strong>${d.energia_hartree.toFixed(6)} Ha (${d.energia_kcal_mol.toFixed(2)} kcal/mol)</strong></div>`;
+                }
+
+                if (d.convergencia) {
+                    const convLabels = { completada: 'Convergida', no_convergió: 'No convergió', single_point: 'Single point' };
+                    const convClass = d.convergencia === 'completada' ? 'success' : d.convergencia === 'no_convergió' ? 'danger' : '';
+                    html += `<div class="detail-list-row"><span>Optimización</span><strong>${d.n_pasos_opt > 1 ? `(${d.n_pasos_opt} pasos) ` : ''}<span class="status-badge ${convClass}">${convLabels[d.convergencia] || d.convergencia}</span></strong></div>`;
+                }
+
+                html += `<div class="detail-list-row"><span>Terminación</span><strong class="status-badge ${d.normal_termination ? 'success' : 'danger'}">${d.normal_termination ? 'Normal' : 'Anormal'}</strong></div>`;
+
+                if (d.frecuencias_cm1?.length) {
+                    const freqs = d.frecuencias_cm1;
+                    const min_f = Math.min(...freqs).toFixed(1);
+                    const max_f = Math.max(...freqs).toFixed(1);
+                    const imgBadge = d.freq_imaginarias > 0
+                        ? `<span class="status-badge danger">${d.freq_imaginarias} imaginaria${d.freq_imaginarias > 1 ? 's' : ''}</span>`
+                        : `<span class="status-badge success">Todas positivas</span>`;
+                    html += `<div class="detail-list-row"><span>Frecuencias</span><strong>${freqs.length} modos · ${min_f} — ${max_f} cm⁻¹ · ${imgBadge}</strong></div>`;
+                }
+
+                const t = d.termodinamica || {};
+                if (t.e_gibbs_hartree != null)
+                    html += `<div class="detail-list-row"><span>Energía libre de Gibbs</span><strong>${t.e_gibbs_hartree.toFixed(6)} Ha</strong></div>`;
+                if (t.e_enthalpy_hartree != null)
+                    html += `<div class="detail-list-row"><span>Entalpía</span><strong>${t.e_enthalpy_hartree.toFixed(6)} Ha</strong></div>`;
+                if (t.zpe_hartree != null)
+                    html += `<div class="detail-list-row"><span>Corrección ZPE</span><strong>${t.zpe_hartree.toFixed(6)} Ha</strong></div>`;
+
+                const cp = d.counterpoise || {};
+                if (cp.energia_corregida_hartree != null) {
+                    html += `<div class="detail-list-row"><span>Energía corregida (CP)</span><strong>${cp.energia_corregida_hartree.toFixed(6)} Ha</strong></div>`;
+                    if (cp.bsse_hartree != null)
+                        html += `<div class="detail-list-row"><span>BSSE</span><strong>${cp.bsse_hartree.toFixed(6)} Ha</strong></div>`;
+                }
+                const fragKeys = Object.keys(cp).filter(k => k.startsWith('fragmento_'));
+                for (const fk of fragKeys) {
+                    const num = fk.replace('fragmento_', '').replace('_hartree', '');
+                    html += `<div class="detail-list-row"><span>Fragmento ${num} (DCBS)</span><strong>${cp[fk].toFixed(6)} Ha</strong></div>`;
+                }
+
+                if (d.errores_gaussian?.length) {
+                    html += `<div class="detail-list-row"><span>Errores detectados</span><strong class="status-badge danger">${d.errores_gaussian.join(', ')}</strong></div>`;
+                }
+
+                html += `</div></div>`;
+                return html;
+            }
+
             function renderMetricas(metricas) {
                 const mainGrid = document.getElementById('metricasChartsGrid');
                 const extrasGrid = document.getElementById('extrasChartsGrid');
@@ -701,6 +796,7 @@
                 let propiedades = null;
                 let huboRmsf = false;
                 let huboExtras = false;
+                const gaussianLogs = [];
 
                 const mainTypes = new Set(['rmsf', 'energia_minimizacion']);
                 const extrasTypes = new Set(['rmsd', 'rg']);
@@ -708,6 +804,10 @@
                 for (const m of metricas) {
                     if (m.tipo_metrica === 'propiedades_estaticas') {
                         propiedades = m.valores_tiempo_json;
+                        continue;
+                    }
+                    if (m.tipo_metrica === 'gaussian_log') {
+                        gaussianLogs.push(m);
                         continue;
                     }
                     const config = METRIC_CONFIG[m.tipo_metrica];
@@ -726,6 +826,16 @@
                     }
                 }
 
+                // Gaussian
+                const gaussianSection = document.getElementById('gaussianSection');
+                const gaussianResults = document.getElementById('gaussianResults');
+                if (gaussianLogs.length) {
+                    gaussianResults.innerHTML = gaussianLogs.map(renderGaussianLog).join('');
+                    gaussianSection.style.display = '';
+                } else {
+                    gaussianSection.style.display = 'none';
+                }
+
                 // Propiedades estáticas
                 const propPanel = document.getElementById('propiedadesEstaticasPanel');
                 if (propiedades) {
@@ -740,14 +850,20 @@
                 }
 
                 // Visibilidad secciones
-                document.getElementById('metricasEmpty').style.display = (huboRmsf || propiedades) ? 'none' : '';
+                const huboAlgo = huboRmsf || propiedades || gaussianLogs.length;
+                document.getElementById('metricasEmpty').style.display = huboAlgo ? 'none' : '';
                 document.getElementById('btnAgregarRmsf').style.display = (huboRmsf || propiedades) ? '' : 'none';
 
                 const extrasSection = document.getElementById('extrasSection');
                 const extrasEmpty = document.getElementById('extrasEmpty');
-                // Mostrar sección extras si hay datos O si ya hay métricas analizadas (para que puedan agregar)
                 extrasSection.style.display = (huboRmsf || propiedades || huboExtras) ? '' : 'none';
                 extrasEmpty.style.display = huboExtras ? 'none' : '';
+
+                // Para Gaussian, ocultar secciones que no aplican
+                if (gaussianLogs.length && !huboRmsf && !propiedades && !huboExtras) {
+                    document.getElementById('metricasSection').style.display = 'none';
+                    extrasSection.style.display = 'none';
+                }
             }
 
             async function copiarRuta() {

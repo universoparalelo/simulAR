@@ -313,6 +313,159 @@ def _save_metrica(
 # Parser de archivos de salida de minimización AMBER
 # ---------------------------------------------------------------------------
 
+def parsear_gaussian_log(log_path: str) -> dict[str, Any]:
+    """Extrae métricas de un archivo .log de Gaussian (g09/g16).
+
+    Extrae: energía SCF, método/base, convergencia de optimización,
+    frecuencias vibracionales, termodinámica y datos de counterpoise.
+    """
+    import re
+
+    result: dict[str, Any] = {
+        "software": "Gaussian",
+        "metodo": None,
+        "base": None,
+        "energia_hartree": None,
+        "energia_kcal_mol": None,
+        "convergencia": None,
+        "n_pasos_opt": 0,
+        "frecuencias_cm1": [],
+        "freq_imaginarias": 0,
+        "termodinamica": {},
+        "counterpoise": {},
+        "normal_termination": False,
+        "errores_gaussian": [],
+    }
+
+    try:
+        with open(log_path, encoding="utf-8", errors="ignore") as f:
+            contenido = f.read()
+    except OSError:
+        return result
+
+    if re.search(r"Normal termination of Gaussian", contenido):
+        result["normal_termination"] = True
+
+    route_match = re.search(r"#\s*(.+?)(?:\n -+\n)", contenido, re.DOTALL)
+    if route_match:
+        route_line = route_match.group(1).replace("\n ", " ").strip()
+        parts = route_line.split("/", 1)
+        if len(parts) == 2:
+            method_part = parts[0].split()[-1] if parts[0].split() else parts[0]
+            result["metodo"] = method_part.strip()
+            base_part = parts[1].split()[0] if parts[1].split() else parts[1]
+            result["base"] = base_part.strip()
+
+    scf_matches = re.findall(
+        r"SCF Done:\s+E\(\S+\)\s*=\s*([-\d.E+]+)", contenido
+    )
+    if scf_matches:
+        last_energy = float(scf_matches[-1])
+        result["energia_hartree"] = last_energy
+        result["energia_kcal_mol"] = round(last_energy * 627.5095, 4)
+        result["n_pasos_opt"] = len(scf_matches)
+
+    if "Optimization completed" in contenido:
+        result["convergencia"] = "completada"
+    elif "Optimization stopped" in contenido:
+        result["convergencia"] = "no_convergió"
+    elif result["n_pasos_opt"] == 1:
+        result["convergencia"] = "single_point"
+
+    freq_matches = re.findall(r"Frequencies\s+--\s+([\s\d.-]+)", contenido)
+    all_freqs = []
+    for match in freq_matches:
+        for val in match.split():
+            try:
+                all_freqs.append(float(val))
+            except ValueError:
+                pass
+    if all_freqs:
+        result["frecuencias_cm1"] = all_freqs
+        result["freq_imaginarias"] = sum(1 for f in all_freqs if f < 0)
+
+    zpe_match = re.search(r"Zero-point correction=\s+([-\d.]+)", contenido)
+    thermal_match = re.search(
+        r"Thermal correction to Energy=\s+([-\d.]+)", contenido
+    )
+    enthalpy_match = re.search(
+        r"Thermal correction to Enthalpy=\s+([-\d.]+)", contenido
+    )
+    gibbs_match = re.search(
+        r"Thermal correction to Gibbs Free Energy=\s+([-\d.]+)", contenido
+    )
+    sum_elec_zpe = re.search(
+        r"Sum of electronic and zero-point Energies=\s+([-\d.]+)", contenido
+    )
+    sum_elec_thermal = re.search(
+        r"Sum of electronic and thermal Energies=\s+([-\d.]+)", contenido
+    )
+    sum_elec_enthalpy = re.search(
+        r"Sum of electronic and thermal Enthalpies=\s+([-\d.]+)", contenido
+    )
+    sum_elec_gibbs = re.search(
+        r"Sum of electronic and thermal Free Energies=\s+([-\d.]+)", contenido
+    )
+
+    thermo: dict[str, float] = {}
+    if zpe_match:
+        thermo["zpe_hartree"] = float(zpe_match.group(1))
+    if thermal_match:
+        thermo["thermal_correction_hartree"] = float(thermal_match.group(1))
+    if enthalpy_match:
+        thermo["enthalpy_correction_hartree"] = float(enthalpy_match.group(1))
+    if gibbs_match:
+        thermo["gibbs_correction_hartree"] = float(gibbs_match.group(1))
+    if sum_elec_zpe:
+        thermo["e_zpe_hartree"] = float(sum_elec_zpe.group(1))
+    if sum_elec_thermal:
+        thermo["e_thermal_hartree"] = float(sum_elec_thermal.group(1))
+    if sum_elec_enthalpy:
+        thermo["e_enthalpy_hartree"] = float(sum_elec_enthalpy.group(1))
+    if sum_elec_gibbs:
+        thermo["e_gibbs_hartree"] = float(sum_elec_gibbs.group(1))
+    if thermo:
+        result["termodinamica"] = thermo
+
+    cp_corrected = re.search(
+        r"Counterpoise corrected energy\s*=\s*([-\d.]+)", contenido
+    )
+    cp_bsse = re.search(r"BSSE energy\s*=\s*([-\d.]+)", contenido)
+    if cp_corrected:
+        result["counterpoise"]["energia_corregida_hartree"] = float(
+            cp_corrected.group(1)
+        )
+    if cp_bsse:
+        result["counterpoise"]["bsse_hartree"] = float(cp_bsse.group(1))
+
+    dcbs_matches = re.findall(
+        r"Counterpoise: doing DCBS calculation for fragment\s+(\d+)",
+        contenido,
+    )
+    for frag_num in dcbs_matches:
+        block_pattern = (
+            rf"Counterpoise: doing DCBS calculation for fragment\s+{frag_num}"
+            r".*?SCF Done:\s+E\(\S+\)\s*=\s*([-\d.E+]+)"
+        )
+        frag_match = re.search(block_pattern, contenido, re.DOTALL)
+        if frag_match:
+            result["counterpoise"][f"fragmento_{frag_num}_hartree"] = float(
+                frag_match.group(1)
+            )
+
+    error_patterns = [
+        (r"Convergence failure -- run terminated", "convergence_failure"),
+        (r"FormBX had a problem", "formbx_error"),
+        (r"Erroneous write", "write_error"),
+        (r"galloc:.*could not allocate memory", "memory_error"),
+    ]
+    for pattern, label in error_patterns:
+        if re.search(pattern, contenido):
+            result["errores_gaussian"].append(label)
+
+    return result
+
+
 def parsear_energia_minimizacion(out_path: str) -> dict[str, Any]:
     """Extrae la curva de energía de un archivo .out de minimización AMBER (sander/pmemd).
 
@@ -386,6 +539,63 @@ def calcular_propiedades_estaticas(universe: "mda.Universe") -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Análisis de simulaciones Gaussian
+# ---------------------------------------------------------------------------
+
+def _analizar_gaussian(
+    db: Session,
+    sim: Simulacion,
+    archivos: list[Archivo],
+) -> dict[str, Any]:
+    """Analiza archivos .log de Gaussian y persiste métricas."""
+    log_files = [
+        a.nombre_archivo for a in archivos
+        if (a.extension or "").lower() == ".log"
+    ]
+
+    resultados: dict[str, Any] = {
+        "simulacion_id": sim.id,
+        "modo": "gaussian",
+        "motor_analisis": "regex_parser",
+        "metricas_calculadas": [],
+        "errores": [],
+        "advertencias": [],
+        "logs_analizados": [],
+    }
+
+    if not log_files:
+        raise ValueError(
+            "No se encontraron archivos .log de Gaussian para analizar."
+        )
+
+    for log_rel in log_files:
+        log_path = os.path.join(sim.ruta_absoluta, log_rel)
+        try:
+            datos = parsear_gaussian_log(log_path)
+        except Exception as exc:
+            resultados["errores"].append(f"{log_rel}: {exc}")
+            continue
+
+        if datos["energia_hartree"] is None:
+            resultados["advertencias"].append(
+                f"{log_rel}: no se encontró energía SCF"
+            )
+            continue
+
+        datos["archivo"] = log_rel
+        _save_metrica(db, sim.id, "gaussian_log", datos)
+        resultados["metricas_calculadas"].append(f"gaussian_log:{log_rel}")
+        resultados["logs_analizados"].append(log_rel)
+
+    if not resultados["logs_analizados"]:
+        raise ValueError(
+            "No se pudo extraer energía de ningún archivo .log de Gaussian."
+        )
+
+    return resultados
+
+
+# ---------------------------------------------------------------------------
 # Función principal de análisis
 # ---------------------------------------------------------------------------
 
@@ -404,12 +614,6 @@ def analizar_simulacion(
                   atom_selection (str), frame_start (int|None), frame_end (int|None).
                   Default: {"rmsd": {"atom_selection": "backbone"}, "rg": {"atom_selection": "all"}}
     """
-    if not MDA_AVAILABLE:
-        raise ValueError(
-            "MDAnalysis no está instalado. "
-            "Ejecutá: pip install MDAnalysis"
-        )
-
     if metricas is None:
         metricas = {
             "rmsf": {"atom_selection": "name CA"},
@@ -423,6 +627,16 @@ def analizar_simulacion(
         raise FileNotFoundError(f"El directorio ya no existe: {sim.ruta_absoluta}")
 
     archivos: list[Archivo] = sim.archivos
+
+    # --- Gaussian: parsear .log directamente, no usa MDAnalysis ---
+    if (sim.software or "").lower() == "gaussian":
+        return _analizar_gaussian(db, sim, archivos)
+
+    if not MDA_AVAILABLE:
+        raise ValueError(
+            "MDAnalysis no está instalado. "
+            "Ejecutá: pip install MDAnalysis"
+        )
 
     # Localizar archivos
     topologia_candidates = _find_topology_candidates(archivos)
