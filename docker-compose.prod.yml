@@ -1,0 +1,15 @@
+services:
+  simular:
+    image: ${DOCKERHUB_USER:-universoparalelo}/simular:latest
+    container_name: simular
+    ports:
+      - "8000:8000"
+    volumes:
+      - simular_data:/simulAR/data
+      - ${SIMULACIONES_PATH:-./simulaciones}:/simulaciones:ro
+    environment:
+      - DATABASE_URL=sqlite:////simulAR/data/simular_local.db
+    restart: unless-stopped
+
+volumes:
+  simular_data:

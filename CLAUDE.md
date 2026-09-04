@@ -26,7 +26,7 @@ docker compose down
 
 El servidor queda disponible en `http://127.0.0.1:8000`. La documentación Swagger se genera automáticamente en `/docs`.
 
-La base de datos SQLite se crea automáticamente en `simular_local.db` al primer arranque. Para cambiarla a PostgreSQL/Supabase (producción), copiar `.env.example` a `.env` y completar `DATABASE_URL` con el connection string real (ver "Migración a Supabase" más abajo). `.env` no se versiona (`.gitignore`) porque contiene la contraseña de la DB.
+La base de datos SQLite se crea automáticamente en `simular_local.db` al primer arranque (dentro del volumen Docker `simular_data`). `.env` no se versiona (`.gitignore`).
 
 ## Arquitectura
 
@@ -70,21 +70,15 @@ app/
 
 ## Decisiones técnicas
 
-**CSS propio en vez de Tailwind CSS**: `app/static/dashboard.css` está escrito a mano (con variables CSS para colores/espaciado/tipografía) en lugar de usar Tailwind, aunque el documento de planificación original (`docs/Etapa1.md`) proponía Tailwind. Es una decisión consciente, no una desviación accidental: Tailwind agregaría una dependencia de build tooling (Node, PostCSS/CLI) a un proyecto que hoy es 100% Python y corre local en la máquina del laboratorio; la superficie de UI es chica (dos vistas, `dashboard.html` y `detalle.html`); y no hay ningún impacto para el usuario final — el navegador recibe CSS compilado en ambos casos, con renderizado y performance equivalentes. El costo de migrar ~1100 líneas de CSS ya funcional no se justifica frente a trabajo pendiente de mayor valor (graficación, migración a Supabase). Si en el futuro el equipo crece o la UI se vuelve mucho más compleja, reevaluar.
+**CSS propio en vez de Tailwind CSS**: `app/static/dashboard.css` está escrito a mano (con variables CSS para colores/espaciado/tipografía) en lugar de usar Tailwind. Tailwind agregaría build tooling (Node, PostCSS) a un proyecto 100% Python; la superficie de UI es chica (dos vistas) y el CSS funcional no justifica migración.
 
-## Migración a Supabase
+**SQLite local, sin Supabase**: la app corre en el mismo servidor que los archivos de simulación; no hay beneficio en una DB en la nube. Se probó la integración con Supabase (Fase 4.1 del plan) pero se decidió quedar con SQLite. Los backups se manejan en el servidor con un cron que copie el archivo `.db`.
 
-`app/database.py` carga `.env` con `python-dotenv` antes de leer `DATABASE_URL`. **Ya validada end-to-end** (Fase 4.1 del plan completa): tablas creadas, `jsonb` confirmado con `jsonb_typeof()`, y flujo completo probado contra la DB real (import → análisis en background → polling → gráficos → cascade delete).
+## Deploy (CI/CD)
 
-Pasos para apuntar a Supabase:
+Cada push a `main` dispara GitHub Actions (`.github/workflows/docker-publish.yml`) que buildea la imagen Docker y la pushea a Docker Hub. En el servidor del laboratorio se usa `docker-compose.prod.yml` que pullée la imagen publicada en vez de buildear local.
 
-1. Crear el proyecto en Supabase, ir al botón **"Connect"** (arriba del dashboard del proyecto, ya no está bajo Settings → Database) y copiar el connection string del modo **Session pooler** (compatible IPv4; el direct connection puede requerir IPv6).
-2. Copiar `.env.example` a `.env` y pegar ese string en `DATABASE_URL`, reemplazando `[PASSWORD]` por la contraseña real de la DB.
-   - **Ojo con caracteres especiales en la contraseña**: si Supabase generó una contraseña con `@` (u otro carácter reservado de URL), hay que percent-encodearlo (`@` → `%40`) o el parser corta el connection string en el lugar equivocado y arma un host inválido. Verificar con `sqlalchemy.engine.url.make_url(DATABASE_URL)` y chequear que `.host` sea el esperado antes de asumir que anda.
-3. Instalar el driver: `psycopg2-binary` ya está en `requirements.txt`. **Importante en esta máquina**: el `pip`/`python` que resuelve la terminal por default es el de Anaconda, no el del `.venv` del proyecto — instalar siempre con la ruta explícita (`.venv\Scripts\python.exe -m pip install ...`), si no el paquete queda en el entorno equivocado y `create_engine()` falla con `ModuleNotFoundError: No module named 'psycopg2'` aunque `pip show` "lo encuentre".
-4. Correr la app (`docker compose up --build -d`) una vez: el evento `startup` llama a `init_db()`, que crea las tablas en Supabase con `Base.metadata.create_all()` (no hay Alembic en el proyecto).
-5. `metadata_json` y `valores_tiempo_json` usan `JSON().with_variant(JSONB(), "postgresql")` (ver `simulacion.py`/`metrica.py`): siguen siendo `TEXT`/`JSON` genérico en SQLite, pero se crean como `jsonb` real en Postgres.
-6. Para volver a desarrollar local, comentar/borrar `DATABASE_URL` en `.env` — el default cae de nuevo a `sqlite:///./simular_local.db`.
+Secrets necesarios en GitHub: `DOCKERHUB_USERNAME` y `DOCKERHUB_TOKEN`.
 
 ## Seguimiento del plan de trabajo
 
@@ -144,4 +138,3 @@ import app.models.metrica
 ## Próximos pasos planificados
 
 - Módulo de optimización de almacenamiento (identificar archivos redundantes/eliminables)
-- Migración a PostgreSQL/Supabase para producción (solo cambiar `DATABASE_URL`)

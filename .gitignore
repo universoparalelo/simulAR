@@ -33,7 +33,7 @@ data/simulations.db
 data/*.db
 simular_local.db
 
-# Variables de entorno (contienen credenciales de Supabase/Postgres)
+# Variables de entorno
 .env
 .env.local
 

@@ -8,7 +8,23 @@ La app usa FastAPI como backend, Jinja2 para templates HTML, Chart.js para grafi
 
 - **Docker** (recomendado para despliegue) o **Python 3.11+** (instalacion manual)
 
-## Instalacion con Docker (recomendado)
+## Deploy en el servidor del laboratorio (Docker Hub)
+
+Cada push a `main` publica la imagen automaticamente en Docker Hub via GitHub Actions. En el servidor solo hace falta:
+
+```bash
+docker pull <usuario>/simular:latest
+docker compose up -d
+```
+
+Para actualizar a una nueva version:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+## Desarrollo local con Docker
 
 ### 1. Clonar el repositorio
 
@@ -17,16 +33,7 @@ git clone <url-del-repo>
 cd simulAR
 ```
 
-### 2. (Opcional) Configurar base de datos
-
-Por defecto la app usa SQLite dentro del contenedor (persistido en un volumen Docker). Para usar Supabase/PostgreSQL, copiar `.env.example` a `.env` y configurar `DATABASE_URL`:
-
-```bash
-cp .env.example .env
-# Editar .env con el connection string de Supabase
-```
-
-### 3. Construir y levantar
+### 2. Construir y levantar
 
 ```bash
 docker compose up -d --build
@@ -101,14 +108,7 @@ conda activate simulAR
 pip install -r requirements.txt
 ```
 
-### 2. (Opcional) Configurar Supabase
-
-```bash
-cp .env.example .env
-# Editar .env con el connection string
-```
-
-### 3. Ejecutar
+### 2. Ejecutar
 
 ```bash
 uvicorn app.main:app --reload

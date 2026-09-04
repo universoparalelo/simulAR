@@ -2,16 +2,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.metrica import ResultadoMetrica
-
-# JSON genérico en SQLite (TEXT), JSONB nativo en PostgreSQL/Supabase (indexable)
-_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Simulacion(Base):
@@ -24,7 +20,7 @@ class Simulacion(Base):
     fecha_registro: Mapped[Optional[datetime]] = mapped_column(
         DateTime, default=datetime.utcnow
     )
-    metadata_json: Mapped[Optional[dict]] = mapped_column(_JSON_TYPE, nullable=True)
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     estado_analisis: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pendiente", server_default="pendiente"
     )
