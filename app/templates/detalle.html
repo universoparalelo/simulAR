@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=gamess-1" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=chart-delete-btn-3" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
@@ -677,9 +677,7 @@
                             <h3 class="section-title">${config.label}</h3>
                             ${rangeLine}
                         </div>
-                        <button class="chart-delete-btn" onclick="eliminarMetrica(${m.id})" title="Eliminar gráfico">
-                            <i class="ti ti-trash"></i>
-                        </button>
+                        <button class="chart-delete-btn" onclick="eliminarMetrica(${m.id})" title="Eliminar gráfico">&times;</button>
                     </div>
                     <canvas></canvas>`;
 
