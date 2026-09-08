@@ -41,6 +41,7 @@ from app.services.escaner import (
     scan_directory_for_simulations,
     scan_files_in_path,
 )
+from app.services.nanocable import generar_nanocable
 
 
 def format_bytes(size: int) -> str:
@@ -140,6 +141,10 @@ def create_app():
             "detalle.html",
             {"simulation_id": simulation_id},
         )
+
+    @app.get("/herramientas/nanocable", response_class=HTMLResponse)
+    async def herramientas_nanocable(request: Request):
+        return templates.TemplateResponse(request, "herramientas_nanocable.html", {})
 
     # API: Registro de una simulación (carga desde ruta de disco)
     @app.post("/api/simulaciones/import", response_model=SimulacionOut)
@@ -376,6 +381,34 @@ def create_app():
         if sim is None:
             raise HTTPException(status_code=404, detail="Simulación no encontrada")
         metrica_repo.delete_by_simulacion(db, simulacion_id)
+
+    # --- Herramientas ---
+
+    @app.post("/api/herramientas/nanocable")
+    async def generar_nanocable_endpoint(
+        archivo: UploadFile = File(...),
+        n_repeticiones: int = Form(...),
+        angulo: float = Form(60.0),
+        eje: str = Form("z"),
+        distancia_z: float = Form(0.0),
+    ):
+        contenido = (await archivo.read()).decode("utf-8", errors="ignore")
+        try:
+            resultado = generar_nanocable(
+                contenido, n_repeticiones, angulo, eje, distancia_z
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        nombre_base = Path(archivo.filename).stem if archivo.filename else "nanocable"
+        return {
+            "nombre_archivo": f"{nombre_base}_nanocable_final.pdb",
+            "pdb": resultado["pdb"],
+            "atomos_originales": resultado["atomos_originales"],
+            "atomos_generados": resultado["atomos_generados"],
+            "n_rosetas": resultado["n_rosetas"],
+            "residuos_por_roseta": resultado["residuos_por_roseta"],
+        }
 
     # --- Almacenamiento ---
 

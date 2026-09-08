@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>QuITEx Simulation Manager - Nanocable</title>
+        <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=upload-preview-modal-3" />
+        <link rel="stylesheet" href="{{ url_for('static', path='nanocable.css') }}?v=1" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
+        <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    </head>
+    <body>
+        <div class="dashboard-container">
+            <!-- HEADER -->
+            <div class="header">
+                <div class="header-left">
+                    <div class="header-logo">
+                        <img
+                            src="{{ url_for('static', path='UTN_logo.jpg') }}"
+                            alt="UTN"
+                            class="header-logo-img"
+                        />
+                    </div>
+                    <div>
+                        <h1 class="header-title">Generador de nanocables</h1>
+                        <div class="detail-subtitle">
+                            Extiende y rota una roseta supramolecular para armar un nanocable
+                        </div>
+                    </div>
+                </div>
+                <button class="header-button" onclick="window.location.href='/'">
+                    &#8249; Volver
+                </button>
+            </div>
+
+            <div class="nanocable-layout">
+                <!-- PANEL DE PARÁMETROS -->
+                <div class="nanocable-form-card">
+                    <h2 class="section-title">1. Roseta de entrada</h2>
+
+                    <div class="upload-field">
+                        <label for="pdbInput">Archivo .pdb</label>
+                        <input id="pdbInput" type="file" accept=".pdb" class="upload-input" />
+                        <div id="pdbInputHint" class="nanocable-hint">
+                            Subí el .pdb de una roseta (registros ATOM).
+                        </div>
+                    </div>
+
+                    <h2 class="section-title nanocable-section-spacing">2. Parámetros</h2>
+
+                    <div class="nanocable-params-grid">
+                        <div class="upload-field">
+                            <label for="repeticionesInput">Repeticiones</label>
+                            <input
+                                id="repeticionesInput"
+                                type="number"
+                                class="upload-input"
+                                min="0"
+                                max="200"
+                                value="9"
+                            />
+                        </div>
+                        <div class="upload-field">
+                            <label for="anguloInput">Ángulo por roseta (°)</label>
+                            <input
+                                id="anguloInput"
+                                type="number"
+                                class="upload-input"
+                                step="1"
+                                value="60"
+                            />
+                        </div>
+                        <div class="upload-field">
+                            <label for="ejeInput">Eje de rotación</label>
+                            <select id="ejeInput" class="upload-input">
+                                <option value="z" selected>Z</option>
+                                <option value="y">Y</option>
+                                <option value="x">X</option>
+                            </select>
+                        </div>
+                        <div class="upload-field">
+                            <label for="distanciaInput">Distancia de apilado (Å)</label>
+                            <input
+                                id="distanciaInput"
+                                type="number"
+                                class="upload-input"
+                                step="0.1"
+                                value="0"
+                            />
+                        </div>
+                    </div>
+
+                    <div id="nanocableStatus" class="upload-status" role="status" hidden></div>
+
+                    <div class="nanocable-actions">
+                        <button
+                            id="btnGenerar"
+                            type="button"
+                            class="primary-button"
+                            onclick="generarNanocable()"
+                        >
+                            <i class="ti ti-atom-2"></i>
+                            Generar nanocable
+                        </button>
+                        <button
+                            id="btnDescargar"
+                            type="button"
+                            class="secondary-button"
+                            onclick="descargarPdb()"
+                            disabled
+                        >
+                            <i class="ti ti-download"></i>
+                            Descargar .pdb
+                        </button>
+                    </div>
+
+                    <div id="resultadoResumen" class="nanocable-summary" hidden></div>
+                </div>
+
+                <!-- PANEL DE PREVISUALIZACIÓN -->
+                <div class="nanocable-preview-card">
+                    <h2 class="section-title">Previsualización</h2>
+                    <div class="nanocable-viewers">
+                        <div class="nanocable-viewer-block">
+                            <div class="nanocable-viewer-label">Roseta original</div>
+                            <div id="viewerOriginal" class="nanocable-viewer"></div>
+                        </div>
+                        <div class="nanocable-viewer-block">
+                            <div class="nanocable-viewer-label">Nanocable generado</div>
+                            <div id="viewerGenerado" class="nanocable-viewer"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            let viewerOriginal = null;
+            let viewerGenerado = null;
+            let pdbGenerado = null;
+            let nombreArchivoGenerado = "nanocable_final.pdb";
+
+            function crearViewer(elementId) {
+                return $3Dmol.createViewer(document.getElementById(elementId), {
+                    backgroundColor: "white",
+                });
+            }
+
+            function renderPdb(viewer, texto) {
+                viewer.clear();
+                viewer.addModel(texto, "pdb");
+                viewer.setStyle({}, { stick: {} });
+                viewer.zoomTo();
+                viewer.render();
+            }
+
+            function setStatus(mensaje, tipo) {
+                const el = document.getElementById("nanocableStatus");
+                el.textContent = mensaje;
+                el.className = tipo ? `upload-status ${tipo}` : "upload-status";
+                el.hidden = !mensaje;
+            }
+
+            document.getElementById("pdbInput").addEventListener("change", async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const texto = await file.text();
+                if (!viewerOriginal) viewerOriginal = crearViewer("viewerOriginal");
+                renderPdb(viewerOriginal, texto);
+                document.getElementById("btnDescargar").disabled = true;
+                pdbGenerado = null;
+            });
+
+            async function generarNanocable() {
+                const fileInput = document.getElementById("pdbInput");
+                const archivo = fileInput.files[0];
+                if (!archivo) {
+                    setStatus("Elegí primero un archivo .pdb", "error");
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append("archivo", archivo);
+                formData.append(
+                    "n_repeticiones",
+                    document.getElementById("repeticionesInput").value,
+                );
+                formData.append("angulo", document.getElementById("anguloInput").value);
+                formData.append("eje", document.getElementById("ejeInput").value);
+                formData.append(
+                    "distancia_z",
+                    document.getElementById("distanciaInput").value,
+                );
+
+                const btn = document.getElementById("btnGenerar");
+                btn.disabled = true;
+                setStatus("Generando nanocable...", "info");
+                document.getElementById("resultadoResumen").hidden = true;
+
+                try {
+                    const res = await fetch("/api/herramientas/nanocable", {
+                        method: "POST",
+                        body: formData,
+                    });
+
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        setStatus(
+                            "Error: " + (data.detail || res.statusText),
+                            "error",
+                        );
+                        return;
+                    }
+
+                    const data = await res.json();
+                    pdbGenerado = data.pdb;
+                    nombreArchivoGenerado = data.nombre_archivo;
+
+                    if (!viewerGenerado) viewerGenerado = crearViewer("viewerGenerado");
+                    renderPdb(viewerGenerado, pdbGenerado);
+
+                    const resumen = document.getElementById("resultadoResumen");
+                    resumen.hidden = false;
+                    resumen.innerHTML =
+                        `<strong>${data.n_rosetas}</strong> rosetas · ` +
+                        `<strong>${data.atomos_generados}</strong> átomos ` +
+                        `(${data.residuos_por_roseta} residuos/roseta)`;
+
+                    document.getElementById("btnDescargar").disabled = false;
+                    setStatus("Nanocable generado correctamente", "success");
+                } catch (err) {
+                    console.error(err);
+                    setStatus("Error de red al generar el nanocable", "error");
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            function descargarPdb() {
+                if (!pdbGenerado) return;
+                const blob = new Blob([pdbGenerado], { type: "chemical/x-pdb" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = nombreArchivoGenerado;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            }
+        </script>
+    </body>
+</html>

@@ -34,14 +34,23 @@
                     </div>
                     <h1 class="header-title">QuITEx Simulation Manager</h1>
                 </div>
-                <button
-                    id="btnLoadSim"
-                    class="header-button"
-                    onclick="handleLoadSimulation()"
-                >
-                    <i class="ti ti-folder-plus"></i>
-                    Cargar simulación
-                </button>
+                <div style="display: flex; gap: 8px">
+                    <button
+                        class="header-button"
+                        onclick="window.location.href='/herramientas/nanocable'"
+                    >
+                        <i class="ti ti-atom-2"></i>
+                        Nanocable
+                    </button>
+                    <button
+                        id="btnLoadSim"
+                        class="header-button"
+                        onclick="handleLoadSimulation()"
+                    >
+                        <i class="ti ti-folder-plus"></i>
+                        Cargar simulación
+                    </button>
+                </div>
             </div>
 
             <!-- Input oculto para selección de carpeta (webkitdirectory) -->

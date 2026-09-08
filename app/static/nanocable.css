@@ -1,0 +1,85 @@
+/* ============================================
+   Herramientas - Generador de nanocables
+   ============================================ */
+
+.nanocable-layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: var(--spacing-xl);
+    align-items: start;
+}
+
+.nanocable-form-card,
+.nanocable-preview-card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-xl);
+}
+
+.nanocable-section-spacing {
+    margin-top: var(--spacing-xl);
+}
+
+.nanocable-hint {
+    color: var(--color-text-tertiary);
+    font-size: 12px;
+    margin-top: var(--spacing-xs);
+}
+
+.nanocable-params-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-lg);
+}
+
+.nanocable-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-xl);
+}
+
+.nanocable-actions .primary-button,
+.nanocable-actions .secondary-button {
+    flex: 1;
+}
+
+.nanocable-summary {
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background: var(--color-background-success);
+    color: var(--color-text-success);
+    border-radius: var(--border-radius-md);
+    font-size: 13px;
+}
+
+.nanocable-viewers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-lg);
+}
+
+.nanocable-viewer-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.nanocable-viewer {
+    height: 420px;
+    background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    position: relative;
+}
+
+@media (max-width: 900px) {
+    .nanocable-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .nanocable-viewers {
+        grid-template-columns: 1fr;
+    }
+}
