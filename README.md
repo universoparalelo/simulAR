@@ -57,17 +57,10 @@ Cubre tres frentes del trabajo diario del lab:
 
 ## Demo
 
-> 🎥 *Video demo pendiente de agregar* — instalación del contenedor desde Docker Hub, instalación manual paso a paso, y recorrido por el dashboard, el análisis y el generador de nanocables.
-
-<!--
-  Reemplazar este bloque por el video/GIF cuando esté listo, por ejemplo:
-
-  https://github.com/universoparalelo/simulAR/assets/<id>/<video>.mp4
-
-  o embeber un GIF corto:
-
-  ![Demo simulAR](docs/demo.gif)
--->
+| | |
+|---|---|
+| 📹 **Dashboard y detalle de simulación** | [`assets/simularSimulaciones.mp4`](assets/simularSimulaciones.mp4) |
+| 📹 **Generador de nanocables** | [`assets/nanocables.mp4`](assets/nanocables.mp4) |
 
 ## Stack tecnológico
 
