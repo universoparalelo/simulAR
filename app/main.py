@@ -27,6 +27,7 @@ from app.models.schemas import (
     EliminarArchivosRequest,
     MetricaCreate,
     MetricaOut,
+    NboConsultaRequest,
     ScanDirectoryRequest,
     ScanDirectoryResult,
     SimulacionCreate,
@@ -43,6 +44,7 @@ from app.services.escaner import (
     sync_files_from_disk,
 )
 from app.services.nanocable import generar_nanocable
+from app.services.nbo import consultar_nbo
 
 
 def format_bytes(size: int) -> str:
@@ -422,6 +424,36 @@ def create_app():
         if resultado["eliminados"]:
             sync_files_from_disk(db, sim)
         return resultado
+
+    # --- NBO (Gaussian) ---
+
+    @app.post("/api/simulaciones/{simulacion_id}/nbo-consulta")
+    def consultar_nbo_endpoint(
+        simulacion_id: int,
+        payload: NboConsultaRequest,
+        db: Session = Depends(get_db),
+    ):
+        """Consulta puntual (no se persiste) de una interacción NBO donor->
+        aceptor en un .log de Gaussian ya registrado en la simulación."""
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+
+        archivo = next(
+            (a for a in sim.archivos if a.nombre_archivo == payload.archivo),
+            None,
+        )
+        if archivo is None or (archivo.extension or "").lower() != ".log":
+            raise HTTPException(
+                status_code=404,
+                detail="Archivo .log no encontrado en esta simulación",
+            )
+
+        log_path = os.path.join(sim.ruta_absoluta, archivo.nombre_archivo)
+        try:
+            return consultar_nbo(log_path, payload.donor, payload.acceptor)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @app.delete("/api/metricas/{metrica_id}", status_code=204)
     def delete_metrica(metrica_id: int, db: Session = Depends(get_db)):

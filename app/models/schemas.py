@@ -78,6 +78,12 @@ class EliminarArchivosRequest(BaseModel):
     archivo_ids: List[int]
 
 
+class NboConsultaRequest(BaseModel):
+    archivo: str
+    donor: str
+    acceptor: str
+
+
 class SimulacionUpdate(BaseModel):
     nombre: Optional[str] = None
     software: Optional[str] = None

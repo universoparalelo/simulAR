@@ -139,6 +139,7 @@ import app.models.metrica
 | DELETE | `/api/simulaciones/{id}/metricas` | Borra todas las métricas |
 | GET | `/api/simulaciones/{id}/storage` | Clasifica archivos en `essential`/`useful`/`deletable` (`analyze_storage`) |
 | POST | `/api/simulaciones/{id}/archivos/eliminar` | Borra del disco los `archivo_ids` indicados, revalidando `classify_deletability` en el backend; ver nota sobre el mount `:ro` en Decisiones técnicas |
+| POST | `/api/simulaciones/{id}/nbo-consulta` | Consulta puntual de una interacción NBO (donor→aceptor) en un `.log` de Gaussian; no persiste nada, ver `services/nbo.py` |
 
 ## Contexto del dominio
 
@@ -146,6 +147,7 @@ import app.models.metrica
 - **Dinámica molecular** (produce `.nc` o `.mdcrd`): permite calcular RMSD y radio de giro en el tiempo.
 - Los archivos de trayectoria `.nc` pueden pesar decenas de GB. No moverlos ni copiarlos; siempre referenciar por ruta absoluta.
 - El campo `software` en `Simulacion` puede ser: `AMBER`, `GAMESS`, `Gaussian`, `GROMACS`, `Travis` o `None` (no detectado).
+- **NBO (Gaussian)**: la tabla "Second Order Perturbation Theory Analysis of Fock Matrix in NBO Basis" del `.log` (requiere `pop=nbo` en el cálculo) lista interacciones donor→aceptor. El donor puede ser de 1 átomo (`LP`, `CR`) o 2 (`BD`, ej. `H 1 - O 2`); el aceptor siempre lleva un `/` antes de su número global de orbital (`/344. BD*( 1) O 18 - H 19`). `services/nbo.py` parsea esa tabla y busca por átomos, no por número de orbital — es una consulta ad-hoc (no se persiste), a diferencia de `gaussian_log` que sí se guarda como métrica. Referencia real: `docs/analisis-NBO.pdf` + `docs/Fructosa-nbo.log.txt`.
 
 ## Próximos pasos planificados
 
