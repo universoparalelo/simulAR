@@ -739,6 +739,11 @@ body.modal-open {
     color: var(--color-text-secondary);
 }
 
+.status-badge.info {
+    background-color: var(--color-background-info);
+    color: var(--color-text-info);
+}
+
 .status-badge i {
     font-size: 10px;
 }
@@ -787,6 +792,37 @@ body.modal-open {
 
 .simulation-row-right {
     text-align: right;
+}
+
+.simulation-row-uploading {
+    cursor: default;
+}
+
+.simulation-row-uploading:hover {
+    border-color: var(--color-border-tertiary);
+    background-color: var(--color-background-primary);
+    box-shadow: var(--shadow-sm);
+    transform: none;
+}
+
+.upload-progress-track {
+    background-color: var(--color-background-tertiary);
+    border-radius: var(--border-radius-md);
+    height: 6px;
+    overflow: hidden;
+}
+
+.upload-progress-fill {
+    background-color: var(--color-text-info);
+    height: 100%;
+    width: 0%;
+    transition: width 0.2s ease;
+}
+
+.upload-progress-label {
+    margin-top: var(--spacing-xs);
+    font-size: 11px;
+    color: var(--color-text-secondary);
 }
 
 .modification-label {

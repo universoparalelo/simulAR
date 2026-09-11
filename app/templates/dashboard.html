@@ -9,7 +9,7 @@
         <!-- CSS del dashboard -->
         <link
             rel="stylesheet"
-            href="{{ url_for('static', path='dashboard.css') }}?v=eliminar-archivos-1"
+            href="{{ url_for('static', path='dashboard.css') }}?v=upload-progreso-1"
         />
 
         <!-- Iconos de Tabler -->
@@ -437,6 +437,94 @@
                 status.hidden = !message;
             }
 
+            function escapeHtml(str) {
+                const div = document.createElement("div");
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            // Tarjeta placeholder que se muestra en la lista mientras se sube
+            // una simulación, con progreso en vivo hasta que el servidor termina
+            // de procesar el POST /api/simulaciones/upload.
+            function insertUploadingPlaceholder(nombre) {
+                const list = document.getElementById("simulationsList");
+                if (!list) return;
+
+                const emptyState = list.querySelector(".empty-state");
+                if (emptyState) emptyState.remove();
+
+                const row = document.createElement("div");
+                row.className = "simulation-row simulation-row-uploading";
+                row.id = "uploadingPlaceholderRow";
+                row.innerHTML = `
+                    <div class="simulation-row-header">
+                        <div class="simulation-row-left">
+                            <div class="simulation-name-container">
+                                <h3 class="simulation-name">${escapeHtml(nombre)}</h3>
+                                <span class="status-badge info">
+                                    <i class="ti ti-loader-2 spin"></i>
+                                    Subiendo
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="upload-progress-track">
+                        <div class="upload-progress-fill" id="uploadingPlaceholderFill" style="width:0%"></div>
+                    </div>
+                    <div class="upload-progress-label" id="uploadingPlaceholderPct">Preparando archivos...</div>
+                `;
+                list.insertBefore(row, list.firstChild);
+            }
+
+            function updateUploadingPlaceholderProgress(pct) {
+                const fill = document.getElementById("uploadingPlaceholderFill");
+                const label = document.getElementById("uploadingPlaceholderPct");
+                if (fill) fill.style.width = `${pct}%`;
+                if (label) label.textContent = `Subiendo... ${pct}%`;
+            }
+
+            function markUploadingPlaceholderProcessing() {
+                const fill = document.getElementById("uploadingPlaceholderFill");
+                const label = document.getElementById("uploadingPlaceholderPct");
+                if (fill) fill.style.width = "100%";
+                if (label) label.textContent = "Procesando...";
+            }
+
+            function removeUploadingPlaceholder() {
+                const row = document.getElementById("uploadingPlaceholderRow");
+                if (row) row.remove();
+            }
+
+            // Sube el FormData con XMLHttpRequest (no fetch) porque necesitamos
+            // xhr.upload.onprogress para reportar el % real subido.
+            function uploadSimulationFiles(formData, onProgress) {
+                return new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open("POST", "/api/simulaciones/upload");
+
+                    xhr.upload.onprogress = (e) => {
+                        if (!e.lengthComputable) return;
+                        onProgress(Math.round((e.loaded / e.total) * 100));
+                    };
+
+                    xhr.onload = () => {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try {
+                                resolve(JSON.parse(xhr.responseText));
+                            } catch (e) {
+                                reject(new Error("Respuesta inválida del servidor"));
+                            }
+                        } else {
+                            reject(new Error(xhr.responseText || `Error ${xhr.status}`));
+                        }
+                    };
+                    xhr.onerror = () =>
+                        reject(new Error("Error de red al subir la simulación."));
+
+                    xhr.send(formData);
+                });
+            }
+
             async function acceptSimulationImport() {
                 if (!pendingSimulationImport) return;
 
@@ -462,45 +550,40 @@
                 btn.textContent = "Subiendo...";
                 acceptButton.innerHTML =
                     '<i class="ti ti-loader-2"></i> Subiendo...';
-                setUploadStatus("Subiendo archivos...", "info");
+                setUploadStatus("Subiendo archivos... 0%", "info");
+                insertUploadingPlaceholder(simName);
 
                 try {
-                    const res = await fetch("/api/simulaciones/upload", {
-                        method: "POST",
-                        body: formData,
-                    });
+                    const data = await uploadSimulationFiles(
+                        formData,
+                        (pct) => {
+                            updateUploadingPlaceholderProgress(pct);
+                            setUploadStatus(
+                                `Subiendo archivos... ${pct}%`,
+                                "info",
+                            );
+                        },
+                    );
 
-                    if (!res.ok) {
-                        const text = await res.text();
-                        setUploadStatus(
-                            "Error al subir la simulación: " + text,
-                            "error",
-                        );
-                    } else {
-                        const data = await res.json();
-                        setUploadStatus(
-                            "Simulación importada: " + data.nombre,
-                            "success",
-                        );
-                        pendingSimulationImport = null;
-                        document.getElementById("dirInput").value = null;
-                        setTimeout(() => {
-                            document.getElementById(
-                                "uploadPreview",
-                            ).hidden = true;
-                            document.body.classList.remove("modal-open");
-                            setUploadStatus("", "");
-                        }, 1400);
-                        // posible refresco de la lista o redirección
-                        // location.reload();
-                    }
+                    markUploadingPlaceholderProcessing();
+                    setUploadStatus(
+                        "Simulación importada: " + data.nombre,
+                        "success",
+                    );
+                    pendingSimulationImport = null;
+                    document.getElementById("dirInput").value = null;
+                    // Recargamos para que el server rearme la lista (dashboard.html
+                    // se renderiza 100% en Jinja) con la simulación ya registrada.
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
                 } catch (err) {
                     console.error(err);
+                    removeUploadingPlaceholder();
                     setUploadStatus(
-                        "Error de red al subir la simulación. Ver consola para más detalles.",
+                        "Error al subir la simulación: " + err.message,
                         "error",
                     );
-                } finally {
                     btn.disabled = false;
                     acceptButton.disabled = false;
                     btn.innerHTML =

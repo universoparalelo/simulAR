@@ -110,6 +110,8 @@ import app.models.metrica
 
 **Archivos de coordenadas AMBER**: MDAnalysis no reconoce `.rst` automáticamente. Hay que pasar `format="RESTRT"` explícitamente. `.inpcrd` se carga como `format="INPCRD"`.
 
+**Upload con progreso: `XMLHttpRequest`, no `fetch`**: en `dashboard.html`, `uploadSimulationFiles()` sube el `FormData` de `/api/simulaciones/upload` con `XMLHttpRequest` (no `fetch`) porque solo `xhr.upload.onprogress` expone bytes-enviados/bytes-totales durante la subida; `fetch` no tiene ese hook de forma consistente entre navegadores. Al aceptar la carga se inserta una fila placeholder (`insertUploadingPlaceholder`) al tope de `#simulationsList` con la barra de progreso; como el dashboard se renderiza 100% en Jinja (`main.py: dashboard()`), al terminar el upload se hace `location.reload()` en vez de pintar la tarjeta final a mano, para no duplicar el markup de la tarjeta en dos lugares.
+
 ## Librerías científicas instaladas
 
 | Librería | Uso |
