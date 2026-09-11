@@ -143,6 +143,39 @@
                 <div id="gaussianResults"></div>
             </section>
 
+            <!-- CONSULTA NBO (Gaussian) -->
+            <section class="simulations-section" id="nboSection" style="display:none;">
+                <div class="metricas-header">
+                    <h2 class="section-title">Análisis NBO</h2>
+                    <button class="header-button" id="btnNboToggle" onclick="toggleNboForm()">
+                        <i class="ti ti-atom-2"></i> Generar análisis NBO
+                    </button>
+                </div>
+                <div id="nboForm" style="display:none;">
+                    <p style="font-size:13px;color:var(--color-text-secondary);margin-top:0;">
+                        Buscá la interacción donor→aceptor de la tabla NBO (ej. donor <code>O10</code>, aceptor <code>O18-H19</code>).
+                    </p>
+                    <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+                        <div>
+                            <label style="display:block;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">Archivo .log</label>
+                            <select id="nboLogSelect" class="filter-select"></select>
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">Donor</label>
+                            <input type="text" id="nboDonorInput" class="search-input" style="max-width:140px;" placeholder="O10" />
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">Aceptor</label>
+                            <input type="text" id="nboAcceptorInput" class="search-input" style="max-width:140px;" placeholder="O18-H19" />
+                        </div>
+                        <button class="header-button" onclick="buscarNbo()">
+                            <i class="ti ti-search"></i> Buscar
+                        </button>
+                    </div>
+                    <div id="nboResultados" style="margin-top:16px;"></div>
+                </div>
+            </section>
+
             <!-- RESULTADOS GAMESS -->
             <section class="simulations-section" id="gamessSection" style="display:none;">
                 <h2 class="section-title">Resultados GAMESS</h2>
@@ -444,6 +477,7 @@
                 // Métricas y estado del análisis
                 updateAnalisisBanner(sim);
                 renderMetricas(sim.metricas || []);
+                renderNboSection(archivos);
 
                 // Tabla de archivos
                 const tbody = document.getElementById('archivosBody');
@@ -793,6 +827,78 @@
 
                 html += `</div></div>`;
                 return html;
+            }
+
+            // Análisis NBO: consulta ad-hoc sobre un .log, no se persiste como
+            // métrica (ver services/nbo.py). Solo requiere que la simulación
+            // tenga al menos un .log; no depende de haber corrido "Analizar".
+            function renderNboSection(archivos) {
+                const section = document.getElementById('nboSection');
+                const logFiles = archivos.filter(a => (a.extension || '').toLowerCase() === '.log');
+
+                if (simSoftware !== 'gaussian' || logFiles.length === 0) {
+                    section.style.display = 'none';
+                    return;
+                }
+
+                section.style.display = '';
+                const select = document.getElementById('nboLogSelect');
+                select.innerHTML = logFiles.map(a => `<option value="${a.nombre_archivo}">${a.nombre_archivo}</option>`).join('');
+            }
+
+            function toggleNboForm() {
+                const form = document.getElementById('nboForm');
+                form.style.display = form.style.display === 'none' ? '' : 'none';
+            }
+
+            async function buscarNbo() {
+                const archivo = document.getElementById('nboLogSelect').value;
+                const donor = document.getElementById('nboDonorInput').value.trim();
+                const acceptor = document.getElementById('nboAcceptorInput').value.trim();
+                const resultadosDiv = document.getElementById('nboResultados');
+
+                if (!archivo || !donor || !acceptor) {
+                    resultadosDiv.innerHTML = '<p style="color:var(--color-text-warning);font-size:13px;">Completá archivo, donor y aceptor.</p>';
+                    return;
+                }
+
+                resultadosDiv.innerHTML = '<p style="color:var(--color-text-secondary);font-size:13px;"><i class="ti ti-loader-2 spin"></i> Buscando...</p>';
+
+                try {
+                    const res = await fetch(`/api/simulaciones/${simulationId}/nbo-consulta`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ archivo, donor, acceptor }),
+                    });
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        resultadosDiv.innerHTML = `<p style="color:var(--color-text-danger);font-size:13px;">${data.detail || 'Error al consultar el NBO.'}</p>`;
+                        return;
+                    }
+
+                    if (data.resultados.length === 0) {
+                        resultadosDiv.innerHTML = `<p style="color:var(--color-text-secondary);font-size:13px;">
+                            No se encontró esa interacción (donor ${donor} → aceptor ${acceptor}).
+                            Puede que no exista, o que Gaussian la haya filtrado por ser menor al umbral de impresión
+                            ${data.threshold_kcal_mol != null ? `(${data.threshold_kcal_mol} kcal/mol)` : ''}.
+                        </p>`;
+                        return;
+                    }
+
+                    resultadosDiv.innerHTML = `
+                        <div class="detail-list">
+                            ${data.resultados.map(r => `
+                                <div class="detail-list-row">
+                                    <span>${donor} → ${acceptor} · ${r.orbital}</span>
+                                    <strong>${r.e2_kcal_mol.toFixed(2)} kcal/mol</strong>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                } catch (e) {
+                    resultadosDiv.innerHTML = '<p style="color:var(--color-text-danger);font-size:13px;">Error de red al consultar el NBO.</p>';
+                }
             }
 
             function renderGamessLog(m) {
