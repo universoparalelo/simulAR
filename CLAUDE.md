@@ -6,7 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **simulAR** es una aplicación web local para el laboratorio QuITEx (UTN) que gestiona, analiza y optimiza el almacenamiento de simulaciones moleculares generadas por AMBER, GAMESS y Gaussian. La app corre en la misma máquina donde están los archivos de simulación, lo que permite acceso directo al sistema de archivos.
 
-El alcance actual cubre los módulos 1 y 2 del plan: gestión de simulaciones y análisis de resultados. El módulo 3 (optimización de almacenamiento) es trabajo futuro.
+El alcance actual cubre los módulos 1 y 2 del plan (gestión de simulaciones y análisis de resultados) más una primera parte del módulo 3: clasificación y borrado de archivos redundantes en disco.
+
+## Flujo de trabajo con Git
+
+Se trabaja siempre en ramas (`feature/...`, `fix/...`, etc.), nunca commiteando ni pusheando directo a `main`. El merge a `main` se hace vía Pull Request en GitHub, y lo abre/mergea el usuario manualmente (Claude no hace `git push` ni abre PRs salvo pedido explícito).
 
 ## Comandos esenciales
 
@@ -74,6 +78,10 @@ app/
 
 **SQLite local, sin Supabase**: la app corre en el mismo servidor que los archivos de simulación; no hay beneficio en una DB en la nube. Se probó la integración con Supabase (Fase 4.1 del plan) pero se decidió quedar con SQLite. Los backups se manejan en el servidor con un cron que copie el archivo `.db`.
 
+**Borrado de archivos: revalidación server-side, no confiar en el cliente**: `classify_deletability()` (en `escaner.py`) es la única fuente de verdad sobre qué archivo es "deletable". El endpoint `POST /api/simulaciones/{id}/archivos/eliminar` vuelve a calcular la categoría de cada archivo en el momento del borrado y rechaza cualquiera que no sea "deletable", sin importar qué mande el frontend. Después de borrar, resincroniza `Archivo`/`metadata_json` re-escaneando el disco (`sync_files_from_disk`, compartida con `/rescan`) en vez de llevar la cuenta manualmente.
+
+**⚠️ El mount `simulaciones/` es read-only en Docker**: tanto `docker-compose.yml` como `docker-compose.prod.yml` montan `${SIMULACIONES_PATH:-./simulaciones}:/simulaciones:ro`. Esto significa que el borrado físico de archivos **falla silenciosamente con `OSError: Read-only file system`** para cualquier simulación importada desde esa carpeta cuando la app corre en Docker (sí funciona para simulaciones subidas vía `/api/simulaciones/upload`, que se guardan en el volumen `simular_data`, que es read-write). Si se quiere que el borrado funcione contra la carpeta real de simulaciones, hay que cambiar ese mount a lectura-escritura a propósito (impacto de seguridad: la app deja de tener garantizado que nunca puede tocar los archivos originales) — no cambiarlo sin decisión explícita del usuario.
+
 ## Deploy (CI/CD)
 
 Cada push a `main` dispara GitHub Actions (`.github/workflows/docker-publish.yml`) que buildea la imagen Docker y la pushea a Docker Hub. En el servidor del laboratorio se usa `docker-compose.prod.yml` que pullée la imagen publicada en vez de buildear local.
@@ -94,7 +102,7 @@ import app.models.metrica
 
 **Pydantic v2**: los schemas usan `model_config = {"from_attributes": True}` en lugar del antiguo `class Config: orm_mode = True`.
 
-**Cache busting**: el CSS en `dashboard.html` lleva `?v=upload-preview-modal-3` y en `detalle.html` lleva `?v=3`. Incrementar el número al modificar `dashboard.css` para forzar recarga en el navegador.
+**Cache busting**: `dashboard.html`, `detalle.html` y `herramientas_nanocable.html` referencian `dashboard.css?v=<label>` con la misma etiqueta en los tres. Cambiar la etiqueta (a algo descriptivo del cambio, no necesariamente un número) en los tres archivos a la vez al modificar `dashboard.css`, para forzar recarga en el navegador.
 
 **`metadata_json` ya es un dict, no un string**: desde la migración a columna JSON nativa, `sim.metadata_json` viaja como objeto en las respuestas de la API. No usar `JSON.parse()` sobre él en el frontend (había un bug así en `detalle.html` que dejaba `meta = {}` siempre, ya corregido).
 
@@ -127,6 +135,8 @@ import app.models.metrica
 | POST | `/api/simulaciones/{id}/analizar` | Encola pipeline MDAnalysis en background (202 inmediato); progreso vía `estado_analisis` en GET |
 | GET | `/api/simulaciones/{id}/metricas` | Lista métricas calculadas |
 | DELETE | `/api/simulaciones/{id}/metricas` | Borra todas las métricas |
+| GET | `/api/simulaciones/{id}/storage` | Clasifica archivos en `essential`/`useful`/`deletable` (`analyze_storage`) |
+| POST | `/api/simulaciones/{id}/archivos/eliminar` | Borra del disco los `archivo_ids` indicados, revalidando `classify_deletability` en el backend; ver nota sobre el mount `:ro` en Decisiones técnicas |
 
 ## Contexto del dominio
 
@@ -137,4 +147,4 @@ import app.models.metrica
 
 ## Próximos pasos planificados
 
-- Módulo de optimización de almacenamiento (identificar archivos redundantes/eliminables)
+- Decidir si el mount `simulaciones/` pasa a lectura-escritura para que el borrado funcione contra la carpeta real (ver nota en Decisiones técnicas), o si el borrado queda limitado a simulaciones subidas vía upload.

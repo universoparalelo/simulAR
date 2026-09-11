@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>QuITEx Simulation Manager - Detalle</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
-        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=chart-delete-btn-3" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=eliminar-archivos-1" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     </head>
@@ -169,11 +169,17 @@
                 <div class="storage-summary" id="storageSummary"></div>
                 <div class="storage-bar-container" id="storageBar"></div>
                 <div id="deletableFilesContainer" style="display:none;">
-                    <h3 class="section-title" style="margin-top:16px;">Archivos eliminables</h3>
+                    <div class="metricas-header" style="margin-top:16px;">
+                        <h3 class="section-title" style="margin:0;">Archivos eliminables</h3>
+                        <button class="header-button" id="eliminarSeleccionadosBtn" onclick="eliminarSeleccionados()" disabled>
+                            <i class="ti ti-trash"></i> Eliminar seleccionados
+                        </button>
+                    </div>
                     <div class="detail-table-wrapper">
                         <table class="detail-table">
                             <thead>
                                 <tr>
+                                    <th><input type="checkbox" id="selectAllDeletable" onchange="toggleSelectAllDeletable(this)"></th>
                                     <th>Archivo</th>
                                     <th>Extensión</th>
                                     <th>Tamaño</th>
@@ -1052,18 +1058,74 @@
                         document.getElementById('storageCleanMessage').style.display = 'none';
                         document.getElementById('deletableFilesBody').innerHTML = data.deletable_files.map(f => `
                             <tr>
+                                <td><input type="checkbox" class="deletable-checkbox" data-id="${f.id}" data-nombre="${f.nombre_archivo}" data-bytes="${f.tamano_bytes}" onchange="updateEliminarSeleccionadosBtn()"></td>
                                 <td style="font-family:var(--font-mono);font-size:12px">${f.nombre_archivo}</td>
                                 <td style="color:var(--color-text-secondary)">${f.extension || '—'}</td>
                                 <td>${formatBytes(f.tamano_bytes)}</td>
                                 <td style="color:var(--color-text-secondary);font-size:12px">${deletableReason(f)}</td>
                             </tr>
                         `).join('');
+                        document.getElementById('selectAllDeletable').checked = false;
+                        updateEliminarSeleccionadosBtn();
                     } else {
                         document.getElementById('deletableFilesContainer').style.display = 'none';
                         document.getElementById('storageCleanMessage').style.display = '';
                     }
                 } catch (e) {
                     // Silently fail — storage analysis is optional
+                }
+            }
+
+            function toggleSelectAllDeletable(checkbox) {
+                document.querySelectorAll('.deletable-checkbox').forEach(cb => cb.checked = checkbox.checked);
+                updateEliminarSeleccionadosBtn();
+            }
+
+            function updateEliminarSeleccionadosBtn() {
+                const seleccionados = document.querySelectorAll('.deletable-checkbox:checked');
+                const btn = document.getElementById('eliminarSeleccionadosBtn');
+                if (seleccionados.length === 0) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="ti ti-trash"></i> Eliminar seleccionados';
+                } else {
+                    const bytes = Array.from(seleccionados).reduce((acc, cb) => acc + Number(cb.dataset.bytes || 0), 0);
+                    btn.disabled = false;
+                    btn.innerHTML = `<i class="ti ti-trash"></i> Eliminar ${seleccionados.length} archivo(s) (${formatBytes(bytes)})`;
+                }
+            }
+
+            async function eliminarSeleccionados() {
+                const seleccionados = Array.from(document.querySelectorAll('.deletable-checkbox:checked'));
+                if (seleccionados.length === 0) return;
+
+                const bytes = seleccionados.reduce((acc, cb) => acc + Number(cb.dataset.bytes || 0), 0);
+                const nombres = seleccionados.map(cb => `  • ${cb.dataset.nombre}`).join('\n');
+                const confirmado = confirm(
+                    `Esta acción borra ${seleccionados.length} archivo(s) del disco de forma permanente ` +
+                    `(${formatBytes(bytes)} liberados) y no se puede deshacer:\n\n${nombres}\n\n¿Continuar?`
+                );
+                if (!confirmado) return;
+
+                const archivoIds = seleccionados.map(cb => Number(cb.dataset.id));
+                try {
+                    const res = await fetch(`/api/simulaciones/${simulationId}/archivos/eliminar`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ archivo_ids: archivoIds }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        alert(`Error al eliminar archivos: ${data.detail || res.statusText}`);
+                        return;
+                    }
+                    if (data.errores && data.errores.length > 0) {
+                        const detalle = data.errores.map(e => `  • ${e.nombre_archivo || e.archivo_id}: ${e.error}`).join('\n');
+                        alert(`Algunos archivos no se pudieron eliminar:\n\n${detalle}`);
+                    }
+                    await loadSimulation();
+                    await loadStorageAnalysis();
+                } catch (e) {
+                    alert('Error de red al eliminar archivos.');
                 }
             }
 

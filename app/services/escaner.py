@@ -308,6 +308,31 @@ def list_simulations(db: Session) -> list[Simulacion]:
     return db.query(Simulacion).order_by(Simulacion.fecha_registro.desc()).all()
 
 
+def sync_files_from_disk(db: Session, sim: Simulacion) -> Simulacion:
+    """Re-escanea la carpeta física de `sim` y sincroniza software, metadata
+    y filas de Archivo con lo que hay realmente en disco."""
+    files = scan_files_in_path(sim.ruta_absoluta)
+    software = detect_software(files)
+    metadata = build_metadata(sim.ruta_absoluta, files, software)
+
+    sim.software = software
+    sim.metadata_json = metadata
+
+    db.query(Archivo).filter(Archivo.simulacion_id == sim.id).delete()
+    for f in files:
+        db.add(Archivo(
+            nombre_archivo=f["nombre_archivo"],
+            extension=f["extension"],
+            tamano_bytes=f["tamano_bytes"],
+            tipo=f["tipo"],
+            simulacion_id=sim.id,
+        ))
+
+    db.commit()
+    db.refresh(sim)
+    return sim
+
+
 # ============================================================
 # Análisis de almacenamiento
 # ============================================================
@@ -361,6 +386,73 @@ def classify_deletability(archivo: Archivo, all_archivos: list[Archivo]) -> str:
         return "useful" if archivo.id == biggest.id else "deletable"
 
     return "useful"
+
+
+def delete_deletable_files(sim: Simulacion, archivo_ids: list[int]) -> dict[str, Any]:
+    """Borra del disco los archivos de `sim` indicados en `archivo_ids`.
+
+    Revalida la categoría de cada archivo contra `classify_deletability` en el
+    momento del borrado (nunca confía en lo que haya decidido el cliente) y
+    solo borra los que siguen siendo "deletable". No toca la DB: el caller
+    debe resincronizar después con `sync_files_from_disk`.
+    """
+    archivos = sim.archivos
+    by_id = {a.id: a for a in archivos}
+    raiz = os.path.abspath(sim.ruta_absoluta)
+
+    eliminados: list[dict[str, Any]] = []
+    errores: list[dict[str, Any]] = []
+    bytes_liberados = 0
+
+    for archivo_id in archivo_ids:
+        archivo = by_id.get(archivo_id)
+        if archivo is None:
+            errores.append({
+                "archivo_id": archivo_id,
+                "nombre_archivo": None,
+                "error": "Archivo no encontrado en esta simulación",
+            })
+            continue
+
+        categoria = classify_deletability(archivo, archivos)
+        if categoria != "deletable":
+            errores.append({
+                "archivo_id": archivo_id,
+                "nombre_archivo": archivo.nombre_archivo,
+                "error": f"No está clasificado como eliminable (categoría actual: {categoria})",
+            })
+            continue
+
+        ruta_completa = os.path.abspath(os.path.join(raiz, archivo.nombre_archivo))
+        if os.path.commonpath([raiz, ruta_completa]) != raiz:
+            errores.append({
+                "archivo_id": archivo_id,
+                "nombre_archivo": archivo.nombre_archivo,
+                "error": "Ruta fuera de la carpeta de la simulación",
+            })
+            continue
+
+        try:
+            if os.path.exists(ruta_completa):
+                os.remove(ruta_completa)
+            bytes_liberados += archivo.tamano_bytes or 0
+            eliminados.append({
+                "archivo_id": archivo_id,
+                "nombre_archivo": archivo.nombre_archivo,
+                "tamano_bytes": archivo.tamano_bytes or 0,
+            })
+        except OSError as exc:
+            errores.append({
+                "archivo_id": archivo_id,
+                "nombre_archivo": archivo.nombre_archivo,
+                "error": str(exc),
+            })
+
+    return {
+        "eliminados": eliminados,
+        "errores": errores,
+        "bytes_liberados": bytes_liberados,
+    }
 
 
 def analyze_storage(archivos: list[Archivo]) -> dict[str, Any]:
