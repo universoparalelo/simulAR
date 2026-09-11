@@ -1,6 +1,6 @@
 services:
   simular:
-    image: ${DOCKERHUB_USER:-universoparalelo}/simular:latest
+    image: ${DOCKERHUB_USER:-cele618}/simular:latest
     container_name: simular
     ports:
       - "8000:8000"
