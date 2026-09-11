@@ -146,6 +146,12 @@ body.modal-open {
     transform: translateY(-1px);
 }
 
+.header-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .header-button i {
     font-size: 16px;
 }

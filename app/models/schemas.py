@@ -74,6 +74,10 @@ class ScanDirectoryResult(BaseModel):
     error: Optional[str]
 
 
+class EliminarArchivosRequest(BaseModel):
+    archivo_ids: List[int]
+
+
 class SimulacionUpdate(BaseModel):
     nombre: Optional[str] = None
     software: Optional[str] = None

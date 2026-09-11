@@ -293,7 +293,7 @@
                 <li class="task"><input type="checkbox" id="e2-7"><label for="e2-7">Lector de archivos .dat temporales generados por cpptraj<span class="note">_parse_cpptraj_dat()</span></label></li>
                 <li class="task"><input type="checkbox" id="e2-8"><label for="e2-8">Transformación a vectores numéricos y guardado en Resultado_Metrica</label></li>
                 <li class="task"><input type="checkbox" id="e2-9"><label for="e2-9">Borrado en cascada configurado en el ORM (Simulacion → Archivo/Resultado_Metrica)<span class="note">cascade="all, delete-orphan" en app/models/simulacion.py</span></label></li>
-                <li class="task"><input type="checkbox" id="e2-10"><label for="e2-10">Eliminación física de archivos redundantes en disco para optimizar almacenamiento<span class="note">Corresponde al Módulo 3 (optimización de almacenamiento), marcado como trabajo futuro en CLAUDE.md</span><span class="badge future">módulo 3 — futuro</span></label></li>
+                <li class="task"><input type="checkbox" id="e2-10"><label for="e2-10">Eliminación física de archivos redundantes en disco para optimizar almacenamiento<span class="note">POST /api/simulaciones/{id}/archivos/eliminar revalida classify_deletability en el backend antes de borrar; UI en detalle.html con checkboxes y confirmación. Nota: el mount de `simulaciones/` es `:ro` en docker-compose(.prod).yml, así que hoy solo borra archivos reales cuando ese mount se vuelva read-write.</span></label></li>
             </ul>
         </div>
     </section>
@@ -368,7 +368,7 @@
     const defaultChecked = [
         'doc-1', 'doc-2', 'doc-3', 'doc-4',
         'e1-1', 'e1-2', 'e1-3', 'e1-4', 'e1-5', 'e1-6',
-        'e2-1', 'e2-2', 'e2-3', 'e2-4', 'e2-5', 'e2-6', 'e2-7', 'e2-8', 'e2-9',
+        'e2-1', 'e2-2', 'e2-3', 'e2-4', 'e2-5', 'e2-6', 'e2-7', 'e2-8', 'e2-9', 'e2-10',
         'e3-1', 'e3-2', 'e3-3', 'e3-4', 'e3-5',
         'e4-1', 'e4-2', 'e4-3', 'e4-4'
     ];

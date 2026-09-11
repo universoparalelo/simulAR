@@ -1,3 +1,4 @@
+import os
 import shutil
 import time
 from pathlib import Path
@@ -23,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db, init_db
 from app.models.schemas import (
     AnalisisRequest,
+    EliminarArchivosRequest,
     MetricaCreate,
     MetricaOut,
     ScanDirectoryRequest,
@@ -34,12 +36,11 @@ from app.models.schemas import (
 from app.repositories import archivo_repo, metrica_repo, simulacion_repo
 from app.services.escaner import (
     analyze_storage,
-    build_metadata,
-    detect_software,
+    delete_deletable_files,
     list_simulations,
     register_simulation,
     scan_directory_for_simulations,
-    scan_files_in_path,
+    sync_files_from_disk,
 )
 from app.services.nanocable import generar_nanocable
 
@@ -243,32 +244,10 @@ def create_app():
         sim = simulacion_repo.get_by_id(db, simulacion_id)
         if sim is None:
             raise HTTPException(status_code=404, detail="Simulación no encontrada")
-        import os
         if not os.path.exists(sim.ruta_absoluta):
             raise HTTPException(status_code=404, detail=f"La ruta ya no existe: {sim.ruta_absoluta}")
 
-        files = scan_files_in_path(sim.ruta_absoluta)
-        software = detect_software(files)
-        metadata = build_metadata(sim.ruta_absoluta, files, software)
-
-        sim.software = software
-        sim.metadata_json = metadata
-
-        # Sincronizar archivos: borrar los anteriores y re-agregar
-        from app.models.simulacion import Archivo
-        db.query(Archivo).filter(Archivo.simulacion_id == sim.id).delete()
-        for f in files:
-            db.add(Archivo(
-                nombre_archivo=f["nombre_archivo"],
-                extension=f["extension"],
-                tamano_bytes=f["tamano_bytes"],
-                tipo=f["tipo"],
-                simulacion_id=sim.id,
-            ))
-
-        db.commit()
-        db.refresh(sim)
-        return sim
+        return sync_files_from_disk(db, sim)
 
     @app.post("/api/escanear", response_model=List[ScanDirectoryResult])
     def scan_directory(payload: ScanDirectoryRequest, db: Session = Depends(get_db)):
@@ -418,6 +397,31 @@ def create_app():
         if sim is None:
             raise HTTPException(status_code=404, detail="Simulación no encontrada")
         return analyze_storage(sim.archivos)
+
+    @app.post("/api/simulaciones/{simulacion_id}/archivos/eliminar")
+    def eliminar_archivos_deletables(
+        simulacion_id: int,
+        payload: EliminarArchivosRequest,
+        db: Session = Depends(get_db),
+    ):
+        """Borra del disco los archivos indicados. Revalida en el backend que cada
+        uno siga clasificado como 'deletable' antes de tocarlo (ver
+        `classify_deletability`); nunca confía en la categoría que mande el cliente."""
+        sim = simulacion_repo.get_by_id(db, simulacion_id)
+        if sim is None:
+            raise HTTPException(status_code=404, detail="Simulación no encontrada")
+        if sim.estado_analisis == "procesando":
+            raise HTTPException(
+                status_code=409,
+                detail="No se pueden eliminar archivos mientras hay un análisis en curso",
+            )
+        if not payload.archivo_ids:
+            raise HTTPException(status_code=400, detail="No se especificaron archivos")
+
+        resultado = delete_deletable_files(sim, payload.archivo_ids)
+        if resultado["eliminados"]:
+            sync_files_from_disk(db, sim)
+        return resultado
 
     @app.delete("/api/metricas/{metrica_id}", status_code=204)
     def delete_metrica(metrica_id: int, db: Session = Depends(get_db)):
