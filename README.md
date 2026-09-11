@@ -8,8 +8,8 @@
 Desarrollado para el laboratorio **QuITEx** (UTN)
 
 [![Build & Push Docker Image](https://github.com/universoparalelo/simulAR/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/universoparalelo/simulAR/actions/workflows/docker-publish.yml)
-[![Docker Pulls](https://img.shields.io/docker/pulls/universoparalelo/simular?logo=docker&logoColor=white)](https://hub.docker.com/r/universoparalelo/simular)
-[![Docker Image Size](https://img.shields.io/docker/image-size/universoparalelo/simular/latest?logo=docker&logoColor=white)](https://hub.docker.com/r/universoparalelo/simular)
+[![Docker Pulls](https://img.shields.io/docker/pulls/cele618/simular?logo=docker&logoColor=white)](https://hub.docker.com/r/cele618/simular)
+[![Docker Image Size](https://img.shields.io/docker/image-size/cele618/simular/latest?logo=docker&logoColor=white)](https://hub.docker.com/r/cele618/simular)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Uso](https://img.shields.io/badge/uso-interno%20UTN%20QuITEx-lightgrey)](#)
