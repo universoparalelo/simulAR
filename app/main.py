@@ -150,6 +150,10 @@ def create_app():
     async def herramientas_nanocable(request: Request):
         return templates.TemplateResponse(request, "herramientas_nanocable.html", {})
 
+    @app.get("/herramientas/roseta", response_class=HTMLResponse)
+    async def herramientas_roseta(request: Request):
+        return templates.TemplateResponse(request, "herramientas_roseta.html", {})
+
     # API: Registro de una simulación (carga desde ruta de disco)
     @app.post("/api/simulaciones/import", response_model=SimulacionOut)
     def import_simulation(payload: SimulacionCreate, db: Session = Depends(get_db)):

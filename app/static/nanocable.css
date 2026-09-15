@@ -69,6 +69,10 @@
     gap: var(--spacing-lg);
 }
 
+.nanocable-viewers--single {
+    grid-template-columns: 1fr;
+}
+
 .nanocable-viewer-label {
     font-size: 12px;
     font-weight: 500;

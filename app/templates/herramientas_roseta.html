@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>QuITEx Simulation Manager - Crear roseta</title>
+        <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
+        <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=upload-progreso-1" />
+        <link rel="stylesheet" href="{{ url_for('static', path='nanocable.css') }}?v=4" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
+        <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    </head>
+    <body>
+        <div class="dashboard-container">
+            <!-- HEADER -->
+            <div class="header">
+                <div class="header-left">
+                    <div class="header-logo">
+                        <img
+                            src="{{ url_for('static', path='UTN_logo.jpg') }}"
+                            alt="UTN"
+                            class="header-logo-img"
+                        />
+                    </div>
+                    <div>
+                        <h1 class="header-title">Crear roseta</h1>
+                        <div class="detail-subtitle">
+                            Armá una roseta a partir de una molécula base, opcionalmente
+                            funcionalizándola con un grupo anexado
+                        </div>
+                    </div>
+                </div>
+                <button class="header-button" onclick="window.location.href='/'">
+                    &#8249; Volver
+                </button>
+            </div>
+
+            <div class="nanocable-layout">
+                <!-- PANEL DE PARÁMETROS -->
+                <div class="nanocable-form-card">
+                    <h2 class="section-title">1. Molécula base</h2>
+                    <div class="nanocable-hint">
+                        <strong>La funcionalización todavía es un stub</strong> (devuelve
+                        la base sin modificar) hasta confirmar con el lab molécula, grupo
+                        y punto de anclaje reales — ver
+                        <a
+                            href="https://github.com/universoparalelo/simulAR/issues/4"
+                            target="_blank"
+                            rel="noopener"
+                            >issue #4</a
+                        >.
+                    </div>
+
+                    <div class="upload-field">
+                        <label for="baseInput">Molécula base .pdb</label>
+                        <input id="baseInput" type="file" accept=".pdb" class="upload-input" />
+                    </div>
+
+                    <label class="nanocable-checkbox-field">
+                        <input type="checkbox" id="funcionalizarCheck" />
+                        Funcionalizar antes de generar la roseta
+                    </label>
+
+                    <div id="grupoField" class="upload-field" hidden>
+                        <label for="grupoInput">Grupo a anexar .pdb</label>
+                        <input id="grupoInput" type="file" accept=".pdb" class="upload-input" />
+                    </div>
+
+                    <div id="rosetaStatus" class="upload-status" role="status" hidden></div>
+
+                    <div class="nanocable-actions">
+                        <button
+                            id="btnGenerarRoseta"
+                            type="button"
+                            class="primary-button"
+                            onclick="generarRoseta()"
+                        >
+                            <i class="ti ti-flask-2"></i>
+                            Generar roseta
+                        </button>
+                        <button
+                            id="btnIrANanocable"
+                            type="button"
+                            class="secondary-button"
+                            onclick="irANanocable()"
+                            disabled
+                        >
+                            <i class="ti ti-atom-2"></i>
+                            Nanocable
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PANEL DE PREVISUALIZACIÓN -->
+                <div class="nanocable-preview-card">
+                    <h2 class="section-title">Previsualización</h2>
+                    <div class="nanocable-viewers nanocable-viewers--single">
+                        <div class="nanocable-viewer-block">
+                            <div class="nanocable-viewer-label">Roseta generada</div>
+                            <div id="viewerRoseta" class="nanocable-viewer"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // Misma clave que lee herramientas_nanocable.html al cargar.
+            const ROSETA_STORAGE_KEY = "simular:rosetaParaNanocable";
+
+            let viewerRoseta = null;
+            let rosetaGenerada = null; // { pdb, nombre_archivo }
+
+            function crearViewer(elementId) {
+                return $3Dmol.createViewer(document.getElementById(elementId), {
+                    backgroundColor: "white",
+                });
+            }
+
+            function renderPdb(viewer, texto) {
+                viewer.clear();
+                viewer.addModel(texto, "pdb");
+                viewer.setStyle({}, { stick: {} });
+                viewer.zoomTo();
+                viewer.render();
+            }
+
+            function setStatus(mensaje, tipo) {
+                const el = document.getElementById("rosetaStatus");
+                el.textContent = mensaje;
+                el.className = tipo ? `upload-status ${tipo}` : "upload-status";
+                el.hidden = !mensaje;
+            }
+
+            document.getElementById("funcionalizarCheck").addEventListener("change", (e) => {
+                document.getElementById("grupoField").hidden = !e.target.checked;
+            });
+
+            async function generarRoseta() {
+                const base = document.getElementById("baseInput").files[0];
+                if (!base) {
+                    setStatus("Elegí primero la molécula base", "error");
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append("archivo", base);
+
+                const funcionalizar = document.getElementById("funcionalizarCheck").checked;
+                if (funcionalizar) {
+                    const grupo = document.getElementById("grupoInput").files[0];
+                    if (!grupo) {
+                        setStatus(
+                            'Elegí el grupo a anexar o destildá "Funcionalizar"',
+                            "error",
+                        );
+                        return;
+                    }
+                    formData.append("grupo", grupo);
+                }
+
+                const btn = document.getElementById("btnGenerarRoseta");
+                btn.disabled = true;
+                document.getElementById("btnIrANanocable").disabled = true;
+                rosetaGenerada = null;
+                setStatus("Generando roseta...", "info");
+
+                try {
+                    const res = await fetch("/api/herramientas/roseta", {
+                        method: "POST",
+                        body: formData,
+                    });
+
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        setStatus("Error: " + (data.detail || res.statusText), "error");
+                        return;
+                    }
+
+                    const data = await res.json();
+                    rosetaGenerada = { pdb: data.pdb, nombre_archivo: data.nombre_archivo };
+
+                    if (!viewerRoseta) viewerRoseta = crearViewer("viewerRoseta");
+                    renderPdb(viewerRoseta, data.pdb);
+
+                    document.getElementById("btnIrANanocable").disabled = false;
+
+                    const detalle = data.funcionalizado
+                        ? "funcionalizada — todavía stub, sin cambios químicos reales"
+                        : "sin funcionalizar";
+                    setStatus(`Roseta generada (${detalle})`, "success");
+                } catch (err) {
+                    console.error(err);
+                    setStatus("Error de red al generar la roseta", "error");
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            function irANanocable() {
+                if (!rosetaGenerada) return;
+                sessionStorage.setItem(ROSETA_STORAGE_KEY, JSON.stringify(rosetaGenerada));
+                window.location.href = "/herramientas/nanocable";
+            }
+        </script>
+    </body>
+</html>
