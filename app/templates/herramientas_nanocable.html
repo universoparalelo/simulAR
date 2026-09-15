@@ -6,7 +6,7 @@
         <title>QuITEx Simulation Manager - Nanocable</title>
         <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='UTN_logo.jpg') }}" />
         <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=upload-progreso-1" />
-        <link rel="stylesheet" href="{{ url_for('static', path='nanocable.css') }}?v=1" />
+        <link rel="stylesheet" href="{{ url_for('static', path='nanocable.css') }}?v=2" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css" />
         <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
     </head>
@@ -37,17 +37,63 @@
             <div class="nanocable-layout">
                 <!-- PANEL DE PARÁMETROS -->
                 <div class="nanocable-form-card">
-                    <h2 class="section-title">1. Roseta de entrada</h2>
+                    <h2 class="section-title">1. Generar roseta (opcional)</h2>
+                    <div class="nanocable-hint">
+                        Armá la roseta a partir de una molécula base, opcionalmente
+                        funcionalizándola con un grupo anexado. Si ya tenés una roseta
+                        lista, salteá este paso y subila directo en el paso 2.
+                        <strong>La funcionalización todavía es un stub</strong> (devuelve
+                        la base sin modificar) hasta confirmar con el lab molécula, grupo
+                        y punto de anclaje reales — ver
+                        <a
+                            href="https://github.com/universoparalelo/simulAR/issues/4"
+                            target="_blank"
+                            rel="noopener"
+                            >issue #4</a
+                        >.
+                    </div>
+
+                    <div class="upload-field">
+                        <label for="baseInput">Molécula base .pdb</label>
+                        <input id="baseInput" type="file" accept=".pdb" class="upload-input" />
+                    </div>
+
+                    <label class="nanocable-checkbox-field">
+                        <input type="checkbox" id="funcionalizarCheck" />
+                        Funcionalizar antes de generar la roseta
+                    </label>
+
+                    <div id="grupoField" class="upload-field" hidden>
+                        <label for="grupoInput">Grupo a anexar .pdb</label>
+                        <input id="grupoInput" type="file" accept=".pdb" class="upload-input" />
+                    </div>
+
+                    <div id="rosetaStatus" class="upload-status" role="status" hidden></div>
+
+                    <div class="nanocable-actions">
+                        <button
+                            id="btnGenerarRoseta"
+                            type="button"
+                            class="secondary-button"
+                            onclick="generarRoseta()"
+                        >
+                            <i class="ti ti-flask-2"></i>
+                            Generar roseta
+                        </button>
+                    </div>
+
+                    <h2 class="section-title nanocable-section-spacing">2. Roseta de entrada</h2>
 
                     <div class="upload-field">
                         <label for="pdbInput">Archivo .pdb</label>
                         <input id="pdbInput" type="file" accept=".pdb" class="upload-input" />
                         <div id="pdbInputHint" class="nanocable-hint">
-                            Subí el .pdb de una roseta (registros ATOM).
+                            Subí el .pdb de una roseta (registros ATOM), o generala en el
+                            paso 1.
                         </div>
                     </div>
 
-                    <h2 class="section-title nanocable-section-spacing">2. Parámetros</h2>
+                    <h2 class="section-title nanocable-section-spacing">3. Parámetros</h2>
 
                     <div class="nanocable-params-grid">
                         <div class="upload-field">
@@ -140,6 +186,9 @@
             let viewerGenerado = null;
             let pdbGenerado = null;
             let nombreArchivoGenerado = "nanocable_final.pdb";
+            // Roseta que efectivamente se manda al paso 3: la última que se
+            // subió a mano en "Roseta de entrada" o la que devolvió el paso 1.
+            let archivoRosetaActual = null;
 
             function crearViewer(elementId) {
                 return $3Dmol.createViewer(document.getElementById(elementId), {
@@ -155,16 +204,21 @@
                 viewer.render();
             }
 
-            function setStatus(mensaje, tipo) {
-                const el = document.getElementById("nanocableStatus");
+            function setStatus(elementId, mensaje, tipo) {
+                const el = document.getElementById(elementId);
                 el.textContent = mensaje;
                 el.className = tipo ? `upload-status ${tipo}` : "upload-status";
                 el.hidden = !mensaje;
             }
 
+            document.getElementById("funcionalizarCheck").addEventListener("change", (e) => {
+                document.getElementById("grupoField").hidden = !e.target.checked;
+            });
+
             document.getElementById("pdbInput").addEventListener("change", async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
+                archivoRosetaActual = file;
                 const texto = await file.text();
                 if (!viewerOriginal) viewerOriginal = crearViewer("viewerOriginal");
                 renderPdb(viewerOriginal, texto);
@@ -172,16 +226,92 @@
                 pdbGenerado = null;
             });
 
-            async function generarNanocable() {
-                const fileInput = document.getElementById("pdbInput");
-                const archivo = fileInput.files[0];
-                if (!archivo) {
-                    setStatus("Elegí primero un archivo .pdb", "error");
+            async function generarRoseta() {
+                const base = document.getElementById("baseInput").files[0];
+                if (!base) {
+                    setStatus("rosetaStatus", "Elegí primero la molécula base", "error");
                     return;
                 }
 
                 const formData = new FormData();
-                formData.append("archivo", archivo);
+                formData.append("archivo", base);
+
+                const funcionalizar = document.getElementById("funcionalizarCheck").checked;
+                if (funcionalizar) {
+                    const grupo = document.getElementById("grupoInput").files[0];
+                    if (!grupo) {
+                        setStatus(
+                            "rosetaStatus",
+                            'Elegí el grupo a anexar o destildá "Funcionalizar"',
+                            "error",
+                        );
+                        return;
+                    }
+                    formData.append("grupo", grupo);
+                }
+
+                const btn = document.getElementById("btnGenerarRoseta");
+                btn.disabled = true;
+                setStatus("rosetaStatus", "Generando roseta...", "info");
+
+                try {
+                    const res = await fetch("/api/herramientas/roseta", {
+                        method: "POST",
+                        body: formData,
+                    });
+
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        setStatus(
+                            "rosetaStatus",
+                            "Error: " + (data.detail || res.statusText),
+                            "error",
+                        );
+                        return;
+                    }
+
+                    const data = await res.json();
+                    archivoRosetaActual = new File([data.pdb], data.nombre_archivo, {
+                        type: "chemical/x-pdb",
+                    });
+
+                    // Limpiar la selección manual del paso 2: ahora manda la roseta
+                    // recién generada, no un archivo subido a mano.
+                    document.getElementById("pdbInput").value = "";
+                    document.getElementById("btnDescargar").disabled = true;
+                    pdbGenerado = null;
+
+                    if (!viewerOriginal) viewerOriginal = crearViewer("viewerOriginal");
+                    renderPdb(viewerOriginal, data.pdb);
+
+                    const detalle = data.funcionalizado
+                        ? "funcionalizada — todavía stub, sin cambios químicos reales"
+                        : "sin funcionalizar";
+                    setStatus(
+                        "rosetaStatus",
+                        `Roseta generada (${detalle}) y cargada como roseta de entrada`,
+                        "success",
+                    );
+                } catch (err) {
+                    console.error(err);
+                    setStatus("rosetaStatus", "Error de red al generar la roseta", "error");
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            async function generarNanocable() {
+                if (!archivoRosetaActual) {
+                    setStatus(
+                        "nanocableStatus",
+                        "Elegí un archivo .pdb o generá una roseta en el paso 1",
+                        "error",
+                    );
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append("archivo", archivoRosetaActual);
                 formData.append(
                     "n_repeticiones",
                     document.getElementById("repeticionesInput").value,
@@ -195,7 +325,7 @@
 
                 const btn = document.getElementById("btnGenerar");
                 btn.disabled = true;
-                setStatus("Generando nanocable...", "info");
+                setStatus("nanocableStatus", "Generando nanocable...", "info");
                 document.getElementById("resultadoResumen").hidden = true;
 
                 try {
@@ -207,6 +337,7 @@
                     if (!res.ok) {
                         const data = await res.json().catch(() => ({}));
                         setStatus(
+                            "nanocableStatus",
                             "Error: " + (data.detail || res.statusText),
                             "error",
                         );
@@ -228,10 +359,10 @@
                         `(${data.residuos_por_roseta} residuos/roseta)`;
 
                     document.getElementById("btnDescargar").disabled = false;
-                    setStatus("Nanocable generado correctamente", "success");
+                    setStatus("nanocableStatus", "Nanocable generado correctamente", "success");
                 } catch (err) {
                     console.error(err);
-                    setStatus("Error de red al generar el nanocable", "error");
+                    setStatus("nanocableStatus", "Error de red al generar el nanocable", "error");
                 } finally {
                     btn.disabled = false;
                 }

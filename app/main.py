@@ -43,6 +43,7 @@ from app.services.escaner import (
     scan_directory_for_simulations,
     sync_files_from_disk,
 )
+from app.services.funcionalizacion import funcionalizar
 from app.services.nanocable import generar_nanocable
 from app.services.nbo import consultar_nbo
 
@@ -364,6 +365,29 @@ def create_app():
         metrica_repo.delete_by_simulacion(db, simulacion_id)
 
     # --- Herramientas ---
+
+    @app.post("/api/herramientas/roseta")
+    async def generar_roseta_endpoint(
+        archivo: UploadFile = File(...),
+        grupo: Optional[UploadFile] = File(None),
+    ):
+        contenido = (await archivo.read()).decode("utf-8", errors="ignore")
+        contenido_grupo = (
+            (await grupo.read()).decode("utf-8", errors="ignore")
+            if grupo is not None
+            else None
+        )
+        try:
+            roseta_pdb = funcionalizar(contenido, contenido_grupo)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        nombre_base = Path(archivo.filename).stem if archivo.filename else "roseta"
+        return {
+            "nombre_archivo": f"{nombre_base}_roseta.pdb",
+            "pdb": roseta_pdb,
+            "funcionalizado": grupo is not None,
+        }
 
     @app.post("/api/herramientas/nanocable")
     async def generar_nanocable_endpoint(
