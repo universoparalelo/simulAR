@@ -12,3 +12,6 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Sin esto, "import app" solo funciona si se invoca como `python -m pytest`
+# (que agrega el cwd a sys.path); el CI corre `pytest` directo.
+pythonpath = ["."]
