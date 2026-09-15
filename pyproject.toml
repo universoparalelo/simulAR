@@ -1,0 +1,17 @@
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+# docs/ tiene notas y snippets sueltos, no código de la aplicación.
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+# Set conservador: errores reales (pyflakes) + pycodestyle básico. Nada de
+# reglas de estilo/opinión (bugbear, upgrade, etc.) para no generar ruido
+# en un proyecto que hoy no tiene ningún linter configurado.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Sin esto, "import app" solo funciona si se invoca como `python -m pytest`
+# (que agrega el cwd a sys.path); el CI corre `pytest` directo.
+pythonpath = ["."]

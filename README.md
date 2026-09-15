@@ -7,7 +7,8 @@
 **Gestión, análisis y preparación de simulaciones moleculares**
 Desarrollado para el laboratorio **QuITEx** (UTN)
 
-[![Build & Push Docker Image](https://github.com/universoparalelo/simulAR/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/universoparalelo/simulAR/actions/workflows/docker-publish.yml)
+[![CI](https://github.com/universoparalelo/simulAR/actions/workflows/ci.yml/badge.svg)](https://github.com/universoparalelo/simulAR/actions/workflows/ci.yml)
+[![Publicar release en Docker Hub](https://github.com/universoparalelo/simulAR/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/universoparalelo/simulAR/actions/workflows/docker-publish.yml)
 [![Docker Pulls](https://img.shields.io/docker/pulls/cele618/simular?logo=docker&logoColor=white)](https://hub.docker.com/r/cele618/simular)
 [![Docker Image Size](https://img.shields.io/docker/image-size/cele618/simular/latest?logo=docker&logoColor=white)](https://hub.docker.com/r/cele618/simular)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -28,6 +29,7 @@ Desarrollado para el laboratorio **QuITEx** (UTN)
   - [Opción 1: Docker Hub (recomendado)](#opción-1-docker-hub-recomendado)
   - [Opción 2: Docker, build local](#opción-2-docker-build-local)
   - [Opción 3: Instalación manual](#opción-3-instalación-manual)
+- [Versionado y releases](#versionado-y-releases)
 - [Configuración](#configuración)
 - [Backup y migración de datos](#backup-y-migración-de-datos)
 - [Uso](#uso)
@@ -70,7 +72,7 @@ Cubre tres frentes del trabajo diario del lab:
 | Templates | [Jinja2](https://jinja.palletsprojects.com/) (server-side, sin build tooling) |
 | Frontend | CSS propio, [Chart.js](https://www.chartjs.org/) (gráficos), [3Dmol.js](https://3dmol.org/) (visualización molecular) |
 | Análisis científico | [MDAnalysis](https://www.mdanalysis.org/), NumPy, SciPy, Matplotlib, `cpptraj` (opcional, trayectorias grandes) |
-| Deploy | Docker + Docker Compose, GitHub Actions → Docker Hub |
+| Deploy | Docker + Docker Compose, GitHub Actions (CI + releases versionados) → Docker Hub |
 
 ## Instalación
 
@@ -78,7 +80,7 @@ Requisitos: **Docker** (recomendado) o **Python 3.11+** para instalación manual
 
 ### Opción 1: Docker Hub (recomendado)
 
-La imagen se publica automáticamente en Docker Hub en cada push a `main`, así que para levantar la app en el servidor del laboratorio **no hace falta clonar el repositorio completo**: alcanza con bajar el archivo `docker-compose.prod.yml`, que apunta directamente a la imagen publicada.
+La imagen se publica en Docker Hub cada vez que se corta un release (ver [Versionado y releases](#versionado-y-releases)), así que para levantar la app en el servidor del laboratorio **no hace falta clonar el repositorio completo**: alcanza con bajar el archivo `docker-compose.prod.yml`, que apunta directamente a la imagen publicada.
 
 ```bash
 # 1. Crear una carpeta de trabajo y entrar
@@ -98,6 +100,12 @@ Para actualizar a la última versión publicada (parados en esa misma carpeta):
 ```bash
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
+```
+
+Por defecto se usa el tag `latest` (la última versión de release). Para clavar una versión específica en vez de seguir a `latest`, definir `DOCKERHUB_TAG` antes de levantar el contenedor:
+
+```bash
+DOCKERHUB_TAG=v1.2.0 docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### Opción 2: Docker, build local
@@ -145,6 +153,26 @@ uvicorn app.main:app --reload
 ```
 
 Abrir `http://127.0.0.1:8000` en el navegador.
+
+## Versionado y releases
+
+Cada PR a `main` corre un [workflow de CI](.github/workflows/ci.yml) (lint con `ruff`, import de la app, tests con `pytest`, build de Docker sin push) que tiene que pasar antes de mergear.
+
+Mergear a `main` **no** publica nada en Docker Hub. La imagen se publica solo al cortar un release, taggeando un commit de `main` con [versionado semántico](https://semver.org/lang/es/) (`vMAJOR.MINOR.PATCH`):
+
+```bash
+git checkout main && git pull
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+Eso dispara [`docker-publish.yml`](.github/workflows/docker-publish.yml), que primero vuelve a correr lint/tests y, si pasan, publica en Docker Hub:
+
+- `simular:v1.2.0` — versión exacta, para clavarla en un deploy y no moverse de ahí.
+- `simular:1.2` y `simular:1` — apuntan a la última patch/minor de esa serie.
+- `simular:latest` — apunta al release más reciente.
+
+`docker-compose.prod.yml` usa `latest` por defecto; ver [Opción 1: Docker Hub](#opción-1-docker-hub-recomendado) para clavar una versión puntual con `DOCKERHUB_TAG`.
 
 ## Configuración
 

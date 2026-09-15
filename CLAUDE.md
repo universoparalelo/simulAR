@@ -82,11 +82,23 @@ app/
 
 **⚠️ El mount `simulaciones/` es read-only en Docker**: tanto `docker-compose.yml` como `docker-compose.prod.yml` montan `${SIMULACIONES_PATH:-./simulaciones}:/simulaciones:ro`. Esto significa que el borrado físico de archivos **falla silenciosamente con `OSError: Read-only file system`** para cualquier simulación importada desde esa carpeta cuando la app corre en Docker (sí funciona para simulaciones subidas vía `/api/simulaciones/upload`, que se guardan en el volumen `simular_data`, que es read-write). Si se quiere que el borrado funcione contra la carpeta real de simulaciones, hay que cambiar ese mount a lectura-escritura a propósito (impacto de seguridad: la app deja de tener garantizado que nunca puede tocar los archivos originales) — no cambiarlo sin decisión explícita del usuario.
 
-## Deploy (CI/CD)
+## CI/CD y versionado
 
-Cada push a `main` dispara GitHub Actions (`.github/workflows/docker-publish.yml`) que buildea la imagen Docker y la pushea a Docker Hub. En el servidor del laboratorio se usa `docker-compose.prod.yml` que pullée la imagen publicada en vez de buildear local.
+**CI en cada PR** (`.github/workflows/ci.yml`): lint (`ruff check .`), import de la app (`python -c "from app.main import app"`), tests (`pytest`) y build de Docker sin push. Corre en cada PR contra `main`. `ruff` está configurado en `pyproject.toml` con un set conservador (`E4, E7, E9, F` — errores reales, no reglas de estilo/opinión) y excluye `docs/` (notas y snippets sueltos, no código de la app).
+
+**Publicación a Docker Hub** (`.github/workflows/docker-publish.yml`): NO se dispara por push a `main` — solo por un tag de versión (`vMAJOR.MINOR.PATCH`). Mergear a `main` no publica nada; para publicar hay que taggear:
+
+```powershell
+git checkout main; git pull
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+El workflow vuelve a correr lint/tests y, si pasan, publica `simular:v1.2.0`, `simular:1.2`, `simular:1` y actualiza `simular:latest` (vía `docker/metadata-action`, a partir del tag de git). En el servidor del laboratorio se usa `docker-compose.prod.yml`, que pullea la imagen publicada (tag `${DOCKERHUB_TAG:-latest}`) en vez de buildear local — se puede clavar una versión puntual con `DOCKERHUB_TAG=v1.2.0 docker compose -f docker-compose.prod.yml up -d`.
 
 Secrets necesarios en GitHub: `DOCKERHUB_USERNAME` y `DOCKERHUB_TOKEN`.
+
+**Pendiente (decisión del usuario, no implementado)**: publicar automáticamente un tag `edge`/`dev` en cada push a `main` (además de los releases taggeados) — se dejó afuera a propósito hasta charlarlo. Tampoco está configurada la branch protection rule en GitHub que exija que el CI pase antes de mergear a `main` — eso lo configura el usuario directamente en GitHub (Settings → Branches).
 
 ## Seguimiento del plan de trabajo
 

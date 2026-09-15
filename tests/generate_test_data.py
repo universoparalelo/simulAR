@@ -10,7 +10,6 @@ moderados (10-50 MB) para estresar el pipeline sin necesitar GB.
 """
 
 import os
-import struct
 import sys
 import textwrap
 
@@ -361,10 +360,10 @@ def _gen_gromacs_log() -> str:
     for step in range(0, 500001, 1000):
         energy = -50000 + rng.normal(0, 100)
         temp = 300 + rng.normal(0, 3)
-        lines.append(f"           Step           Time")
+        lines.append("           Step           Time")
         lines.append(f"       {step:8d}    {step*0.002:12.5f}")
-        lines.append(f"   Energies (kJ/mol)")
-        lines.append(f"      Potential    Kinetic En.   Total Energy    Temperature")
+        lines.append("   Energies (kJ/mol)")
+        lines.append("      Potential    Kinetic En.   Total Energy    Temperature")
         lines.append(f"  {energy:14.5e}  {temp*100:14.5e}  {energy+temp*100:14.5e}  {temp:14.5e}")
         lines.append("")
 
