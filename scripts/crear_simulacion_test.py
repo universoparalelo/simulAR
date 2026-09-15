@@ -4,9 +4,9 @@ Genera: peptido_test.pdb (topología) + trayectoria.dcd (50 frames)
 Registra la simulación en la DB y ejecuta el análisis.
 """
 
+import json
 import os
 import sys
-import shutil
 import numpy as np
 
 # Asegurar que el path de la app esté disponible
@@ -16,7 +16,6 @@ import app.models.simulacion
 import app.models.metrica
 
 import MDAnalysis as mda
-from MDAnalysis.analysis import rms
 
 from app.database import SessionLocal, init_db
 from app.models.simulacion import Simulacion, Archivo
@@ -105,8 +104,6 @@ if existing:
     db.commit()
     print("Simulación anterior eliminada de la DB")
 
-import json, time
-
 sim = Simulacion(
     nombre="sim_test_trayectoria",
     ruta_absoluta=DEST,
@@ -137,7 +134,7 @@ archivos = [
 for a in archivos:
     db.add(a)
 db.commit()
-print(f"Archivos registrados: peptido_test.pdb, trayectoria.dcd")
+print("Archivos registrados: peptido_test.pdb, trayectoria.dcd")
 
 # ---------------------------------------------------------------------------
 # 5. Ejecutar análisis (RMSD + Rg)
@@ -153,14 +150,14 @@ print(f"Errores: {resultado['errores']}")
 
 if "rmsd_resumen" in resultado:
     r = resultado["rmsd_resumen"]
-    print(f"\nRMSD:")
+    print("\nRMSD:")
     print(f"  min:      {r['min']:.4f} Å")
     print(f"  max:      {r['max']:.4f} Å")
     print(f"  promedio: {r['promedio']:.4f} Å")
 
 if "rg_resumen" in resultado:
     r = resultado["rg_resumen"]
-    print(f"\nRadio de giro:")
+    print("\nRadio de giro:")
     print(f"  min:      {r['min']:.4f} Å")
     print(f"  max:      {r['max']:.4f} Å")
     print(f"  promedio: {r['promedio']:.4f} Å")
