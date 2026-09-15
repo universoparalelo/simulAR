@@ -35,7 +35,13 @@ def classify_file_extension(ext: str) -> str:
 # Extensiones que son señal fuerte de cada software
 _AMBER_EXTS = {".prmtop", ".inpcrd", ".mdcrd", ".nc", ".rst7", ".ncrst"}
 _GAMESS_EXTS = {".inp"}   # .log es compartido, se confirma por contenido
-_GAUSSIAN_EXTS = {".gjf", ".chk", ".fchk"}
+# .chk es un checkpoint binario ambiguo: puede quedar suelto en carpetas de
+# cualquier software (residuo de otro cálculo, archivo de prueba, etc.), así
+# que no cuenta como señal exclusiva de Gaussian por sí solo — solo .gjf/.fchk
+# lo son. Se mantiene en _GAUSSIAN_EXTS para que una carpeta con un .chk siga
+# reconociéndose como "es una simulación" (ver _SIMULATION_SIGNALS).
+_GAUSSIAN_STRONG_EXTS = {".gjf", ".fchk"}
+_GAUSSIAN_EXTS = _GAUSSIAN_STRONG_EXTS | {".chk"}
 _TRAVIS_EXTS = {".travis"}
 _GROMACS_EXTS = {".gro", ".top", ".tpr", ".xtc", ".trr", ".edr", ".ndx", ".mdp"}
 
@@ -73,15 +79,19 @@ def detect_software(files: list[dict[str, Any]]) -> Optional[str]:
         ext = (f["extension"] or "").lower()
         paths_by_ext.setdefault(ext, []).append(f["ruta_completa"])
 
-    # Señales exclusivas por extensión
-    if exts & _GAUSSIAN_EXTS:
-        return "Gaussian"
-    if exts & _TRAVIS_EXTS:
-        return "Travis"
+    # Señales exclusivas por extensión, de más a menos específicas. .chk
+    # queda afuera de esta lista rápida: solo .gjf/.fchk confirman Gaussian
+    # sin ambigüedad (ver comentario junto a _GAUSSIAN_STRONG_EXTS). Si una
+    # carpeta de AMBER/GROMACS tiene un .chk sobrante, sus extensiones
+    # propias (.prmtop/.nc/.rst7, .gro/.top/...) se evalúan primero y ganan.
     if exts & _AMBER_EXTS:
         return "AMBER"
     if exts & _GROMACS_EXTS:
         return "GROMACS"
+    if exts & _TRAVIS_EXTS:
+        return "Travis"
+    if exts & _GAUSSIAN_STRONG_EXTS:
+        return "Gaussian"
 
     # .inp puede ser GAMESS o AMBER (mdin); intentamos leer el contenido
     if ".inp" in exts:
@@ -92,7 +102,9 @@ def detect_software(files: list[dict[str, Any]]) -> Optional[str]:
             if "amber" in content.lower() or "&cntrl" in content.lower():
                 return "AMBER"
 
-    # .log puede ser de varios; inspeccionamos hasta 3 archivos
+    # .log puede ser de varios; inspeccionamos hasta 3 archivos. También es
+    # la única forma de confirmar Gaussian cuando lo único presente es un
+    # .chk suelto (sin .gjf/.fchk): sin .log, .chk solo no alcanza.
     if ".log" in exts:
         for path in paths_by_ext.get(".log", [])[:3]:
             detected = _detect_software_from_log(path)
